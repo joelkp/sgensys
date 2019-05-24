@@ -1,6 +1,8 @@
-# This was the first ssndgen script made, named "script.mgs"
-# when the program was still called mgensys; updated for
-# syntax changes.
+/*
+ * This was the first ssndgen script made, named "script.mgs"
+ * when the program was still called mgensys. Updated for
+ * syntax changes.
+ */
 S	a0.5
 			\0.5
 Osin	f220 t1

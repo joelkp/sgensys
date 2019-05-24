@@ -112,7 +112,8 @@ static SSG_Program *build_program(const char *restrict script_arg,
 	SSG_Program *o = NULL;
 	SSG_MemPool *mempool = SSG_create_MemPool(0);
 	SSG_SymTab *symtab = SSG_create_SymTab(mempool);
-	if (!symtab) return NULL;
+	if (!symtab)
+		return NULL;
 #if SSG_TEST_SCANNER
 	SSG_Scanner *scanner = SSG_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
@@ -127,7 +128,7 @@ static SSG_Program *build_program(const char *restrict script_arg,
 	}
 	o = (SSG_Program*) calloc(1, sizeof(SSG_Program)); // placeholder
 CLOSE:
-	if (scanner) SSG_destroy_Scanner(scanner);
+	SSG_destroy_Scanner(scanner);
 #else
 	SSG_Lexer *lexer = SSG_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
@@ -138,7 +139,7 @@ CLOSE:
 	}
 	o = (SSG_Program*) calloc(1, sizeof(SSG_Program)); // placeholder
 CLOSE:
-	if (lexer) SSG_destroy_Lexer(lexer);
+	SSG_destroy_Lexer(lexer);
 #endif
 	SSG_destroy_SymTab(symtab);
 	SSG_destroy_MemPool(mempool);
@@ -193,6 +194,5 @@ int main(int argc, char **restrict argv) {
 		// no audio output
 		SSG_discard(&prg_objs);
 	}
-
 	return 0;
 }

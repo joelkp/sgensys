@@ -18,6 +18,7 @@ OBJ=\
 	wave.o \
 	reader/file.o \
 	reader/symtab.o \
+	reader/scanner.o \
 	reader/parser.o \
 	reader/parseconv.o \
 	builder/scriptconv.o \
@@ -77,7 +78,7 @@ test-scan: $(TEST1_OBJ)
 arrtype.o: arrtype.c arrtype.h common.h mempool.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h reader/file.h script.h ssndgen.h time.h wave.h
+builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h script.h ssndgen.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
 builder/scriptconv.o: arrtype.h builder/scriptconv.c builder/scriptconv.h common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
@@ -119,13 +120,13 @@ ramp.o: common.h math.h ramp.c ramp.h time.h
 reader/file.o: common.h reader/file.c reader/file.h
 	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
 
-reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/symtab.h
+reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/scanner.h reader/symtab.h
 	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
 
 reader/parseconv.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/parseconv.c reader/parser.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
 
-reader/parser.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/symtab.h script.h time.h wave.h
+reader/parser.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/scanner.h reader/symtab.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) reader/parser.c -o reader/parser.o
 
 reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h

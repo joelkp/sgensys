@@ -48,8 +48,3 @@ void SSG_Lexer_close(SSG_Lexer *restrict o);
 
 bool SSG_Lexer_get(SSG_Lexer *restrict o, SSG_ScriptToken *restrict t);
 bool SSG_Lexer_get_special(SSG_Lexer *restrict o, SSG_ScriptToken *restrict t);
-
-void SSG_Lexer_warning(SSG_Lexer *restrict o, const char *restrict fmt, ...)
-		SSG__printflike(2, 3);
-void SSG_Lexer_error(SSG_Lexer *restrict o, const char *restrict fmt, ...)
-		SSG__printflike(2, 3);

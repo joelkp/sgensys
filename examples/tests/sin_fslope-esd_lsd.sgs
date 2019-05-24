@@ -1,5 +1,5 @@
-# Increase and decrease frequency smoothly,
-# using slope types 'esd' and 'lsd'.
+// Increase and decrease frequency smoothly,
+// using slope types 'esd' and 'lsd'.
 
 Osin	f300 f{cesd t1 v1200} t1
 ;	f{cesd t1 v300} t2.5

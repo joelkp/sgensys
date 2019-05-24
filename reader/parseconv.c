@@ -401,9 +401,9 @@ ERROR:
  *
  * \return instance or NULL on error
  */
-SSG_Script *SSG_load_Script(struct SSG_File *restrict f) {
+SSG_Script *SSG_load_Script(const char *restrict script_arg, bool is_path) {
 	ParseConv pc = (ParseConv){0};
-	SSG_Parse *p = SSG_create_Parse(f);
+	SSG_Parse *p = SSG_create_Parse(script_arg, is_path);
 	if (!p)
 		return NULL;
 	SSG_Script *o = ParseConv_convert(&pc, p);

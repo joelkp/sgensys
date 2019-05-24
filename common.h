@@ -78,3 +78,6 @@ void *SSG_memdup(const void *restrict src, size_t size) SSG__malloclike;
 
 /* Run scanner directly instead of lexer in 'test-scan' program. */
 #define SSG_TEST_SCANNER 0
+
+/* Print test statistics for scanner. */
+#define SSG_SCANNER_STATS 0

@@ -20,29 +20,34 @@
 
 #define STRBUF_LEN 256
 
+#if SSG_SCANNER_STATS
+static size_t hits = 0;
+static size_t misses = 0;
+#endif
+
 /**
  * Create instance.
  *
- * Assigns a modifiable copy of the SSG_Scanner_def_c_filters array,
+ * Assigns a modifiable copy of the SSG_Scanner_def_filters array,
  * freed when the instance is destroyed.
  *
  * \return instance, or NULL on failure
  */
 SSG_Scanner *SSG_create_Scanner(SSG_SymTab *restrict symtab) {
-	if (!symtab) return NULL;
-
+	if (!symtab)
+		return NULL;
 	SSG_Scanner *o = calloc(1, sizeof(SSG_Scanner));
-	if (!o) return NULL;
+	if (!o)
+		return NULL;
 	o->f = SSG_create_File();
 	if (!o->f) goto ERROR;
 	o->symtab = symtab;
-	size_t filters_size = sizeof(SSG_ScanCFilter_f) * SSG_SCAN_CFILTERS;
-	o->c_filters = SSG_memdup(SSG_Scanner_def_c_filters, filters_size);
-	if (!o->c_filters) goto ERROR;
+	size_t filters_size = sizeof(SSG_ScanFilter_f) * SSG_SCAN_FILTER_COUNT;
+	o->filters = SSG_memdup(SSG_Scanner_def_filters, filters_size);
+	if (!o->filters) goto ERROR;
 	o->strbuf = calloc(1, STRBUF_LEN);
 	if (!o->strbuf) goto ERROR;
 	return o;
-
 ERROR:
 	SSG_destroy_Scanner(o);
 	return NULL;
@@ -52,9 +57,14 @@ ERROR:
  * Destroy instance.
  */
 void SSG_destroy_Scanner(SSG_Scanner *restrict o) {
+	if (!o)
+		return;
+#if SSG_SCANNER_STATS
+	printf("hits: %zd\nmisses: %zd\n", hits, misses);
+#endif
 	SSG_destroy_File(o->f);
 	free(o->strbuf);
-	free(o->c_filters);
+	free(o->filters);
 	free(o);
 }
 
@@ -76,8 +86,9 @@ bool SSG_Scanner_open(SSG_Scanner *restrict o,
 		return false;
 	}
 
-	o->cf.line_num = 1; // not increased upon first read
-	o->cf.char_num = 0;
+	o->sf.line_num = 1; // not increased upon first read
+	o->sf.char_num = 0;
+	o->s_flags |= SSG_SCAN_S_DISCARD;
 	return true;
 }
 
@@ -86,50 +97,6 @@ bool SSG_Scanner_open(SSG_Scanner *restrict o,
  */
 void SSG_Scanner_close(SSG_Scanner *restrict o) {
 	SSG_File_close(o->f);
-}
-
-enum {
-	PRINT_FILE_INFO = 1<<0
-};
-
-static void print_stderr(SSG_Scanner *restrict o,
-		uint32_t options, const char *restrict prefix,
-		const char *restrict fmt, va_list ap) {
-	SSG_File *f = o->f;
-	if (options & PRINT_FILE_INFO) {
-		fprintf(stderr, "%s:%d:%d: ",
-			f->path, o->cf.line_num, o->cf.char_num);
-	}
-	if (prefix != NULL) {
-		fprintf(stderr, "%s: ", prefix);
-	}
-	vfprintf(stderr, fmt, ap);
-	putc('\n', stderr);
-}
-
-/**
- * Print warning message including file path and current position.
- */
-void SSG_Scanner_warning(SSG_Scanner *restrict o,
-		const char *restrict fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	print_stderr(o, PRINT_FILE_INFO, "warning", fmt, ap);
-	va_end(ap);
-}
-
-/**
- * Print error message including file path and current position.
- *
- * Sets the scanner state error flag.
- */
-void SSG_Scanner_error(SSG_Scanner *restrict o,
-		const char *restrict fmt, ...) {
-	va_list ap;
-	va_start(ap, fmt);
-	print_stderr(o, PRINT_FILE_INFO, "error", fmt, ap);
-	o->s_flags |= SSG_SCAN_S_ERROR;
-	va_end(ap);
 }
 
 /* Basic character types. */
@@ -192,12 +159,14 @@ static bool read_symstr(SSG_File *restrict f,
 uint8_t SSG_Scanner_filter_invalid(SSG_Scanner *restrict o, uint8_t c) {
 	SSG_File *f = o->f;
 	if (!SSG_File_AFTER_EOF(f)) {
-		SSG_Scanner_warning(o, "invalid character (value 0x%02hhX)", c);
+		SSG_Scanner_warning(o, NULL,
+			"invalid character (value 0x%02hhX)", c);
 		return 0;
 	}
 	uint8_t status = SSG_File_STATUS(f);
 	if ((status & SSG_FILE_ERROR) != 0) {
-		SSG_Scanner_error(o, "file reading failed");
+		SSG_Scanner_error(o, NULL,
+			"file reading failed");
 	}
 	return SSG_SCAN_EOF;
 }
@@ -210,7 +179,7 @@ uint8_t SSG_Scanner_filter_invalid(SSG_Scanner *restrict o, uint8_t c) {
 uint8_t SSG_Scanner_filter_space(SSG_Scanner *restrict o,
 		uint8_t c SSG__maybe_unused) {
 	SSG_File *f = o->f;
-	o->cf.char_num += SSG_File_skipspace(f);
+	o->sf.char_num += SSG_File_skipspace(f);
 	return SSG_SCAN_SPACE;
 }
 
@@ -221,12 +190,11 @@ uint8_t SSG_Scanner_filter_space(SSG_Scanner *restrict o,
  */
 uint8_t SSG_Scanner_filter_linebreaks(SSG_Scanner *restrict o, uint8_t c) {
 	SSG_File *f = o->f;
-	++o->cf.line_num;
 	if (c == '\n') SSG_File_TRYC(f, '\r');
 	while (SSG_File_trynewline(f)) {
-		++o->cf.line_num;
+		++o->sf.line_num;
+		o->sf.char_num = 0;
 	}
-	o->cf.char_num = 0;
 	return SSG_SCAN_LNBRK;
 }
 
@@ -240,7 +208,7 @@ uint8_t SSG_Scanner_filter_linebreaks(SSG_Scanner *restrict o, uint8_t c) {
 uint8_t SSG_Scanner_filter_linecomment(SSG_Scanner *restrict o,
 		uint8_t c SSG__maybe_unused) {
 	SSG_File *f = o->f;
-	o->cf.char_num += SSG_File_skipline(f);
+	o->sf.char_num += SSG_File_skipline(f);
 	return SSG_SCAN_SPACE;
 }
 
@@ -250,46 +218,42 @@ uint8_t SSG_Scanner_filter_linecomment(SSG_Scanner *restrict o,
  * (See e.g. SSG_Scanner_filter_slashcomments(), which uses this for
  * C-style comments.)
  *
- * Does not set the newline field, even if the comment contains newlines;
- * any newlines within a block comment are ignored (commented out), apart
- * from in line numbering.
+ * Does not set the linebreak flag. Linebreaks within a block comment
+ * are ignored (commented out), apart from in line numbering.
  *
  * \return SSG_SCAN_SPACE or SSG_SCAN_EOF (on unterminated comment)
  */
 uint8_t SSG_Scanner_filter_blockcomment(SSG_Scanner *restrict o,
 		uint8_t check_c) {
 	SSG_File *f = o->f;
-	int32_t line_num = o->cf.line_num;
-	int32_t char_num = o->cf.char_num;
+	int32_t line_num = o->sf.line_num;
+	int32_t char_num = o->sf.char_num;
 	for (;;) {
 		uint8_t c = SSG_File_GETC(f);
 		++char_num;
 		if (c == '\n') {
 			++line_num;
-			SSG_File_TRYC(f, '\r');
 			char_num = 0;
+			SSG_File_TRYC(f, '\r');
 		} else if (c == '\r') {
 			++line_num;
 			char_num = 0;
 		} else if (c == check_c) {
-			c = SSG_File_GETC(f);
-			if (c == o->cf.match_c) {
+			if (SSG_File_TRYC(f, o->match_c)) {
 				++char_num;
 				break; /* end of block comment */
-			} else {
-				SSG_File_DECP(f);
 			}
 		} else if (c <= SSG_FILE_MARKER && SSG_File_AFTER_EOF(f)) {
 			c = SSG_Scanner_filter_invalid(o, c);
-			o->cf.flags |= SSG_SCAN_C_ERROR;
-			--o->cf.char_num; // print for beginning of comment
-			SSG_Scanner_error(o, "unterminated comment");
-			++o->cf.char_num;
+			o->sf.c_flags |= SSG_SCAN_C_ERROR;
+			--o->sf.char_num; // print for beginning of comment
+			SSG_Scanner_error(o, NULL, "unterminated comment");
+			++o->sf.char_num;
 			return SSG_SCAN_EOF;
 		}
 	}
-	o->cf.line_num = line_num;
-	o->cf.char_num = char_num;
+	o->sf.line_num = line_num;
+	o->sf.char_num = char_num;
 	return SSG_SCAN_SPACE;
 }
 
@@ -306,12 +270,12 @@ uint8_t SSG_Scanner_filter_slashcomments(SSG_Scanner *restrict o, uint8_t c) {
 	SSG_File *f = o->f;
 	uint8_t next_c = SSG_File_GETC(f);
 	if (next_c == '*') {
-		++o->cf.char_num;
-		o->cf.match_c = '/';
+		++o->sf.char_num;
+		o->match_c = '/';
 		return SSG_Scanner_filter_blockcomment(o, next_c);
 	}
 	if (next_c == '/') {
-		++o->cf.char_num;
+		++o->sf.char_num;
 		return SSG_Scanner_filter_linecomment(o, next_c);
 	}
 	SSG_File_DECP(f);
@@ -329,7 +293,8 @@ uint8_t SSG_Scanner_filter_slashcomments(SSG_Scanner *restrict o, uint8_t c) {
  * \return \p c or SSG_SCAN_SPACE
  */
 uint8_t SSG_Scanner_filter_char1comments(SSG_Scanner *restrict o, uint8_t c) {
-	if (o->cf.char_num == 1) return SSG_Scanner_filter_linecomment(o, c);
+	if (o->sf.char_num == 1)
+		return SSG_Scanner_filter_linecomment(o, c);
 	return c;
 }
 
@@ -339,7 +304,7 @@ uint8_t SSG_Scanner_filter_char1comments(SSG_Scanner *restrict o, uint8_t c) {
  *
  * NULL when the character is simply accepted.
  */
-const SSG_ScanCFilter_f SSG_Scanner_def_c_filters[SSG_SCAN_CFILTERS] = {
+const SSG_ScanFilter_f SSG_Scanner_def_filters[SSG_SCAN_FILTER_COUNT] = {
 	/* NUL 0x00 */ SSG_Scanner_filter_invalid, // also for values above 127
 	/* SOH 0x01 */ SSG_Scanner_filter_invalid,
 	/* STX 0x02 */ SSG_Scanner_filter_invalid,
@@ -471,29 +436,74 @@ const SSG_ScanCFilter_f SSG_Scanner_def_c_filters[SSG_SCAN_CFILTERS] = {
 };
 
 /*
- * Perform pending updates before a get call.
+ * Assign scan frame from undo buffer.
  */
-static void update_cframe(SSG_Scanner *restrict o) {
-	if ((o->cf.flags & SSG_SCAN_C_LNBRK) != 0) {
-		++o->cf.line_num;
-		o->cf.char_num = 0;
-		o->cf.flags &= ~SSG_SCAN_C_LNBRK;
-	}
-	o->s_flags &= ~SSG_SCAN_S_UNGETC;
+static void restore_frame(SSG_Scanner *restrict o, uint32_t offset) {
+	uint32_t i = (o->undo_pos - offset) & SSG_SCAN_UNGET_MAX;
+	o->sf = o->undo[i];
 }
 
 /*
- * Set previous character to \p c.
- *
- * Used to make getting after an undo use the character.
+ * Perform pending updates before a get call.
  */
-static void set_prevc(SSG_Scanner *restrict o, uint8_t c) {
+static void prepare_frame(SSG_Scanner *restrict o) {
+	if (o->unget_num > 0) {
+		/*
+		 * Start from frame after the one ungotten to.
+		 */
+		restore_frame(o, --o->unget_num);
+		return;
+	}
+	if ((o->s_flags & SSG_SCAN_S_DISCARD) != 0) {
+		o->s_flags &= ~SSG_SCAN_S_DISCARD;
+	} else {
+		o->undo_pos = (o->undo_pos + 1) & SSG_SCAN_UNGET_MAX;
+	}
+	o->undo[o->undo_pos] = o->sf;
+	if ((o->sf.c_flags & SSG_SCAN_C_LNBRK) != 0) {
+		o->sf.c_flags &= ~SSG_SCAN_C_LNBRK;
+		++o->sf.line_num;
+		o->sf.char_num = 0;
+	}
+}
+
+/*
+ * Set character used after filtering.
+ *
+ * Sets the file buffer character before the current to \p c,
+ * so that a new get after an undo arrives at \p c.
+ */
+static void set_usedc(SSG_Scanner *restrict o, uint8_t c) {
 	SSG_File *f = o->f;
 	size_t r_pos = f->pos;
+	o->sf.c = c;
 	SSG_File_DECP(f);
 	SSG_File_FIXP(f);
 	SSG_File_SETC_NC(f, c);
 	f->pos = r_pos;
+}
+
+/*
+ * Perform updates after reading a sequence of characters,
+ * e.g. a string or number. Prepares a temporary post-get scan frame.
+ */
+static void advance_frame(SSG_Scanner *o, size_t strlen, uint8_t c) {
+	if (strlen == 0)
+		return;
+	uint32_t reget_count = (strlen > o->unget_num) ?
+		o->unget_num :
+		strlen;
+	uint32_t char_inc = strlen;
+	if (reget_count > 0) {
+		/*
+		 * Advance past ungets prior to frame to restore to.
+		 */
+		o->unget_num -= (reget_count - 1);
+	}
+	prepare_frame(o);
+	o->sf.char_num += char_inc;
+	o->sf.c = c;
+	o->s_flags |= SSG_SCAN_S_DISCARD;
 }
 
 /**
@@ -510,11 +520,11 @@ uint8_t SSG_Scanner_getc(SSG_Scanner *restrict o) {
 	SSG_File *f = o->f;
 	uint8_t c;
 	bool skipped_space = false;
-	update_cframe(o);
+	prepare_frame(o);
 	for (;;) {
-		++o->cf.char_num;
+		++o->sf.char_num;
 		c = SSG_File_GETC(f);
-		SSG_ScanCFilter_f filter = SSG_Scanner_getfilter(o, c);
+		SSG_ScanFilter_f filter = SSG_Scanner_getfilter(o, c);
 		if (!filter) break;
 		c = filter(o, c);
 		if (c == SSG_SCAN_SPACE) {
@@ -523,20 +533,21 @@ uint8_t SSG_Scanner_getc(SSG_Scanner *restrict o) {
 		}
 		if (c != 0) break;
 	}
-	if (c == SSG_SCAN_EOF) return 0;
-	set_prevc(o, c);
+	if (c == SSG_SCAN_EOF)
+		return 0;
+	set_usedc(o, c);
 	if (skipped_space) {
 		/*
 		 * Unget a character and store skipped space
 		 * before returning it.
 		 */
 		SSG_File_UNGETC(f);
-		--o->cf.char_num;
-		set_prevc(o, SSG_SCAN_SPACE);
+		--o->sf.char_num;
+		set_usedc(o, SSG_SCAN_SPACE);
 		return SSG_SCAN_SPACE;
 	}
 	if (c == SSG_SCAN_LNBRK) {
-		o->cf.flags |= SSG_SCAN_C_LNBRK;
+		o->sf.c_flags |= SSG_SCAN_C_LNBRK;
 	}
 	return c;
 }
@@ -553,12 +564,12 @@ uint8_t SSG_Scanner_getc(SSG_Scanner *restrict o) {
 uint8_t SSG_Scanner_getc_nospace(SSG_Scanner *restrict o) {
 	SSG_File *f = o->f;
 	uint8_t c;
-	SSG_ScanCFilter_f filter;
-	int32_t old_char_num;
+	SSG_ScanFilter_f filter;
 	bool skipped_lnbrk = false;
-	update_cframe(o);
+	int32_t old_char_num;
+	prepare_frame(o);
 	for (;;) {
-		++o->cf.char_num;
+		++o->sf.char_num;
 		c = SSG_File_GETC(f);
 		filter = SSG_Scanner_getfilter(o, c);
 		if (!filter) break;
@@ -566,71 +577,182 @@ uint8_t SSG_Scanner_getc_nospace(SSG_Scanner *restrict o) {
 		if (c == SSG_SCAN_SPACE) continue;
 		if (c == SSG_SCAN_LNBRK) {
 			skipped_lnbrk = true;
-			old_char_num = o->cf.char_num;
-			++o->cf.line_num;
-			o->cf.char_num = 0;
+			old_char_num = o->sf.char_num;
+			++o->sf.line_num;
+			o->sf.char_num = 0;
 			continue;
 		}
 		if (c != 0) break;
 	}
-	if (c == SSG_SCAN_EOF) return 0;
-	set_prevc(o, c);
+	if (c == SSG_SCAN_EOF)
+		return 0;
+	set_usedc(o, c);
 	if (skipped_lnbrk) {
 		/*
 		 * Unget a character and store skipped linebreak
 		 * before returning it.
 		 */
 		SSG_File_UNGETC(f);
-		--o->cf.line_num;
-		o->cf.char_num = old_char_num;
-		set_prevc(o, SSG_SCAN_LNBRK);
+		--o->sf.line_num;
+		o->sf.char_num = old_char_num;
+		o->sf.c_flags |= SSG_SCAN_C_LNBRK;
+		set_usedc(o, SSG_SCAN_LNBRK);
 		return SSG_SCAN_LNBRK;
 	}
 	return c;
 }
 
 /**
- * Unget the last character read. This only moves the reading position
- * back one step; any skipped characters (whitespace, etc.) will not be
- * processed again.
+ * Get next character if it matches \p testc,
+ * filtering whitespace like SSG_Scanner_getc().
  *
- * Useful after getting and examining a character and deciding on a
- * different scanning method, e.g. reading a string.
- *
- * Only meant to be called once in a row; an error is printed without
- * further action if called several times in succession. (Allowing
- * several character ungets would risk parsing errors when moving back
- * past syntactic end markers.)
- */
-void SSG_Scanner_ungetc(SSG_Scanner *restrict o) {
-	if ((o->s_flags & SSG_SCAN_S_UNGETC) != 0) {
-		SSG_Scanner_error(o, "scanner ungetc repeated; return without action");
-		return;
-	}
-	SSG_File *f = o->f;
-	SSG_File_UNGETC(f);
-	--o->cf.char_num;
-	o->s_flags |= SSG_SCAN_S_UNGETC;
-}
-
-/**
- * Get next character (filtering whitespace, etc.) if it matches \p testc.
- *
- * Calls SSG_Scanner_ungetc() and returns false if the characters do not
- * match, meaning a new get or try will immediately arrive at the same
- * character. Note that SSG_Scanner_ungetc() cannot be called multiple
- * times in a row, so if false is returned, do not make a direct call to
- * it before further scanning is done.
+ * For filtered characters, does a get followed by SSG_Scanner_ungetc()
+ * if the characters do not match; characters skipped or changed by the
+ * filtering remain skipped or changed for future gets.
  *
  * \return true if character matched \p testc
  */
 bool SSG_Scanner_tryc(SSG_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SSG_Scanner_getc(o);
+	uint8_t c = SSG_File_RETC(o->f);
+	/*
+	 * Use quick handling for unfiltered characters.
+	 */
+	if (!SSG_Scanner_getfilter(o, c)) {
+		if (c != testc)
+			return false;
+		prepare_frame(o);
+		++o->sf.char_num;
+		SSG_File_INCP(o->f);
+		o->sf.c = c;
+		return true;
+	}
+	c = SSG_Scanner_getc(o);
 	if (c != testc) {
+		o->s_flags |= SSG_SCAN_S_DISCARD;
 		SSG_Scanner_ungetc(o);
 		return false;
 	}
 	return true;
+}
+
+/**
+ * Get next character if it matches \p testc,
+ * filtering whitespace like SSG_Scanner_getc_nospace().
+ *
+ * For filtered characters, does a get followed by SSG_Scanner_ungetc()
+ * if the characters do not match; characters skipped or changed by the
+ * filtering remain skipped or changed for future gets.
+ *
+ * \return true if character matched \p testc
+ */
+bool SSG_Scanner_tryc_nospace(SSG_Scanner *restrict o, uint8_t testc) {
+	uint8_t c = SSG_File_RETC(o->f);
+	/*
+	 * Use quick handling for unfiltered characters.
+	 */
+	if (!SSG_Scanner_getfilter(o, c)) {
+		if (c != testc)
+			return false;
+		prepare_frame(o);
+		++o->sf.char_num;
+		SSG_File_INCP(o->f);
+		o->sf.c = c;
+		return true;
+	}
+	c = SSG_Scanner_getc_nospace(o);
+	if (c != testc) {
+		o->s_flags |= SSG_SCAN_S_DISCARD;
+		SSG_Scanner_ungetc(o);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * Unget one character and jump to the previous scan frame.
+ * The next get will jump back and begin with the last character got.
+ *
+ * The scan position is assigned from the undo buffer, with up to
+ * SSG_SCAN_UNGET_MAX ungets allowed in a row.
+ *
+ * Allows revisiting a character using a different scanning method.
+ *
+ * \return number of unget
+ */
+uint32_t SSG_Scanner_ungetc(SSG_Scanner *restrict o) {
+	if (o->unget_num >= SSG_SCAN_UNGET_MAX) {
+		SSG_error("scanner",
+"Unget function called >%d times in a row; return without action",
+			SSG_SCAN_UNGET_MAX);
+		return o->unget_num;
+	}
+	restore_frame(o, ++o->unget_num);
+	SSG_File *f = o->f;
+	SSG_File_UNGETC(f);
+	set_usedc(o, o->sf.c);
+	return o->unget_num;
+}
+
+/**
+ * Read 32-bit signed integer into \p var.
+ *
+ * If \p str_len is not NULL, it will be set to the number of characters
+ * read. 0 implies that no number was read and that \p var is unchanged.
+ *
+ * \return true unless number too large and result truncated
+ */
+bool SSG_Scanner_geti(SSG_Scanner *restrict o,
+		int32_t *restrict var, bool allow_sign,
+		size_t *restrict str_len) {
+	SSG_File *f = o->f;
+	size_t read_len;
+	prepare_frame(o);
+	o->sf.c = SSG_File_RETC(f);
+	++o->sf.char_num;
+	bool truncated = !SSG_File_geti(f, var, allow_sign, &read_len);
+	if (read_len == 0) {
+		o->s_flags |= SSG_SCAN_S_DISCARD;
+		if (str_len) *str_len = 0;
+		return true;
+	}
+	if (truncated) {
+		SSG_Scanner_warning(o, NULL,
+			"value truncated, too large for signed 32-bit int");
+	}
+	advance_frame(o, read_len - 1, SSG_File_RETC_NC(f));
+	if (str_len) *str_len = read_len;
+	return !truncated;
+}
+
+/**
+ * Read double-precision floating point number into \p var.
+ *
+ * If \p str_len is not NULL, it will be set to the number of characters
+ * read. 0 implies that no number was read and that \p var is unchanged.
+ *
+ * \return true unless number too large and result truncated
+ */
+bool SSG_Scanner_getd(SSG_Scanner *restrict o,
+		double *restrict var, bool allow_sign,
+		size_t *restrict str_len) {
+	SSG_File *f = o->f;
+	size_t read_len;
+	prepare_frame(o);
+	o->sf.c = SSG_File_RETC(f);
+	++o->sf.char_num;
+	bool truncated = !SSG_File_getd(f, var, allow_sign, &read_len);
+	if (read_len == 0) {
+		o->s_flags |= SSG_SCAN_S_DISCARD;
+		if (str_len) *str_len = 0;
+		return true;
+	}
+	if (truncated) {
+		SSG_Scanner_warning(o, NULL,
+			"value truncated, too large for 64-bit float");
+	}
+	advance_frame(o, read_len - 1, SSG_File_RETC_NC(f));
+	if (str_len) *str_len = read_len;
+	return !truncated;
 }
 
 /**
@@ -645,24 +767,80 @@ bool SSG_Scanner_get_symstr(SSG_Scanner *restrict o,
 	SSG_File *f = o->f;
 	size_t len;
 	bool truncated;
-	update_cframe(o);
-	SSG_File_DECP(f);
+	prepare_frame(o);
+	o->sf.c = SSG_File_RETC(f);
+	++o->sf.char_num;
 	truncated = !read_symstr(f, o->strbuf, STRBUF_LEN, &len);
 	if (len == 0) {
+		o->s_flags |= SSG_SCAN_S_DISCARD;
 		*symstrp = NULL;
 		return true;
 	}
-	o->cf.char_num += len - 1;
+
+	size_t read_len = len;
 	if (truncated) {
-		SSG_Scanner_warning(o,
+		SSG_Scanner_warning(o, NULL,
 "limiting identifier to %d characters", (STRBUF_LEN - 1));
-		o->cf.char_num += SSG_File_skipstr(f, filter_symchar);
+		read_len += SSG_File_skipstr(f, filter_symchar);
 	}
+	advance_frame(o, read_len - 1, SSG_File_RETC_NC(f));
+
 	SSG_SymStr *symstr = SSG_SymTab_get_symstr(o->symtab, o->strbuf, len);
 	if (!symstr) {
-		SSG_Scanner_error(o, "failed to register string '%s'",
+		SSG_Scanner_error(o, NULL, "failed to register string '%s'",
 				o->strbuf);
 	}
 	*symstrp = symstr;
 	return !truncated;
+}
+
+static void print_stderr(const SSG_Scanner *restrict o,
+		const SSG_ScanFrame *restrict sf,
+		const char *restrict prefix, const char *restrict fmt,
+		va_list ap) {
+	SSG_File *f = o->f;
+	if (sf != NULL) {
+		fprintf(stderr, "%s:%d:%d: ",
+			f->path, sf->line_num, sf->char_num);
+	}
+	if (prefix != NULL) {
+		fprintf(stderr, "%s: ", prefix);
+	}
+	vfprintf(stderr, fmt, ap);
+	putc('\n', stderr);
+}
+
+/**
+ * Print warning message including file path and position.
+ * If \p sf is not NULL, it will be used for position;
+ * otherwise, the current position is used.
+ */
+void SSG_Scanner_warning(const SSG_Scanner *restrict o,
+		const SSG_ScanFrame *restrict sf,
+		const char *restrict fmt, ...) {
+	if ((o->s_flags & SSG_SCAN_S_QUIET) != 0)
+		return;
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, (sf != NULL ? sf : &o->sf),
+		"warning", fmt, ap);
+	va_end(ap);
+}
+
+/**
+ * Print error message including file path and position.
+ * If \p sf is not NULL, it will be used for position;
+ * otherwise, the current position is used.
+ *
+ * Sets the scanner state error flag.
+ */
+void SSG_Scanner_error(SSG_Scanner *restrict o,
+		const SSG_ScanFrame *restrict sf,
+		const char *restrict fmt, ...) {
+	va_list ap;
+	va_start(ap, fmt);
+	print_stderr(o, (sf != NULL ? sf : &o->sf),
+		"error", fmt, ap);
+	o->s_flags |= SSG_SCAN_S_ERROR;
+	va_end(ap);
 }

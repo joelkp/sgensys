@@ -1,5 +1,7 @@
-# Variation #3 of the first ssndgen script made,
-# changed to test the compound step syntax.
+/*
+ * Variation #3 of the first ssndgen script made,
+ * changed to test the compound step syntax.
+ */
 Osin	f220 t1
 ;	f440 t1.5
 ;	f400 t0.5

@@ -1,10 +1,12 @@
-# Variation #5 of the first ssndgen script made,
-# originally called "crashtofix.sgs". The script
-# remained after debugging was done, producing its
-# "machine arm" version of the original tone sequence.
-#
-# Tests nested PM and gradual value changes with
-# compound step syntax.
+/*
+ * Variation #5 of the first ssndgen script made,
+ * originally called "crashtofix.sgs". The script
+ * remained after debugging was done, producing its
+ * "machine arm" version of the original tone sequence.
+ *
+ * Tests nested PM and gradual value changes with
+ * compound step syntax.
+ */
 Osin	f220 p+[
 		Osin r(7/2) a0.5
 		Osin r(7/5) a0.5 p+[Osin r(10/7) a(1/2)]

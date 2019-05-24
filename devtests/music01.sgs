@@ -1,5 +1,5 @@
 Osin	f220 t1.0 p+[
-		#Osin r(7/2),(7/5)~@[Otri r(5/2)] a0.5
+		//Osin r(7/2),(7/5)~@[Otri r(5/2)] a0.5
 		Osin r(7/2) a0.5
 		Osin r(7/1) a0.25
 	]

@@ -75,6 +75,5 @@ typedef struct SSG_Parse {
 	SSG_ScriptOptions sopt;
 } SSG_Parse;
 
-struct SSG_File;
-SSG_Parse *SSG_create_Parse(struct SSG_File *restrict f);
+SSG_Parse *SSG_create_Parse(const char *restrict script_arg, bool is_path);
 void SSG_destroy_Parse(SSG_Parse *restrict o);

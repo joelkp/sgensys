@@ -85,18 +85,19 @@ Keywords
 Each of these keywords is further described in its own section below.
 	S	Set option (parameter default value or other);
 		runs during parsing.
-	O	Add operator; an oscillator with parameters, either a
-		carrier which produces sound for a duration, or a
-		modulator; the "O" must be immediately followed by the
-		(initial) wave type, as in "Osin".
+	O	Add operator, as in oscillator with parameters;
+		a carrier and/or modulator which produces sound
+		for a duration; the "O" is followed by the (initial)
+		wave type, as in "Osin".
 	P	Panning for the voice at the current location; to be
 		followed by the new value.
-	Q	Quit script; end parsing, turning all that follows
-		into a comment. (Optional.) Other ways to comment exist.
+	Q	Quit script; end parsing, commenting out all that follows.
+		Optional. (Commenting more generally uses "#", "//",
+		or "/*...*/" syntax.)
 
 See the section 'Timing' for modifiers.
 
-Set option: S
+S: Set option
 -------------
 
 Set parameter default value or other option; runs during parsing.
@@ -113,14 +114,15 @@ Parameters:
 	n	Sets A4 tuning (Hz) for O "f" (frequency, Hz) value using
 		note syntax; defaults to 444.
 
-Operator: O (followed by wave type)
------------------------------------
+O: Operator
+-----------
 
-Add operator. If a carrier and not a modulator, adds sound at current time
-position, playing for the time duration.
+Add operator, as in oscillator with parameters. If a carrier
+and not a modulator, adds sound at current time position,
+playing for the time duration.
 
-Usage: "O" followed by (initial) wave type (e.g. "Osin"), followed by zero
-or more parameters, each with a value.
+Usage: "O" followed by (initial) wave type (e.g. "Osin"),
+followed by zero or more parameters, each with a value.
 
 Wave types:
 	sin	Sine.
@@ -203,7 +205,7 @@ Parameters:
 		operator.
 	w	Set the wave type. See list of wave types for values.
 
-Panning: P
+P: Panning
 ----------
 
 Set the panning (left-right "balance") of the voice associated with
@@ -212,13 +214,14 @@ Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
 Panning not at either extreme end will reduce level.
 		"Value ramp" values are supported; see section.
 
-Quit: Q
+Q: Quit
 -------
 
-Quit script; end parsing, turning all that follows into a comment.
-(Optional.)
+Quit script; end parsing, commenting out all that follows.
+Optional.
 
-Generally, comments are added using "#" (line comment) instead.
+Commenting more generally uses "#" or "//" line comments,
+or "/*...*/" C-style block comments.
 
 Values and expressions
 ----------------------
@@ -227,7 +230,8 @@ Whitespace is not allowed within multi-character names, keywords or
 numbers, and separates values. Spaces and tabs may otherwise be used or
 omitted anywhere.
 
-Following a "#", the rest of a line is commented out.
+Following a "#" or "//", the rest of a line is commented out.
+Following "/*", text is commented out until "*/" is encountered.
 
 Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.

@@ -1,2 +1,2 @@
-# Sweep through the human hearing range in 10 seconds
+// Sweep through the human hearing range in 10 seconds
 Osin f20 f{v20000 cexp} t10 a0.25

@@ -121,6 +121,5 @@ typedef struct SSG_Script {
 	SSG_ScriptOptions sopt;
 } SSG_Script;
 
-struct SSG_File;
-SSG_Script *SSG_load_Script(struct SSG_File *restrict f);
+SSG_Script *SSG_load_Script(const char *restrict script_arg, bool is_path);
 void SSG_discard_Script(SSG_Script *restrict o);

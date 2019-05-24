@@ -68,16 +68,13 @@ void SSG_error(const char *restrict label, const char *restrict fmt, ...) {
  * \return new allocation or NULL on failure
  */
 void *SSG_memdup(const void *restrict src, size_t size) {
-	if (!size) {
+	if (!size)
 		return NULL;
-	}
-	if (!src) {
+	if (!src)
 		return calloc(1, size);
-	}
 	void *dst = malloc(size);
-	if (!dst) {
+	if (!dst)
 		return NULL;
-	}
 	memcpy(dst, src, size);
 	return dst;
 }

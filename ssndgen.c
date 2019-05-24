@@ -58,7 +58,8 @@ static int32_t get_piarg(const char *restrict str) {
 	int32_t i;
 	errno = 0;
 	i = strtol(str, &endp, 10);
-	if (errno || i <= 0 || endp == str || *endp) return -1;
+	if (errno || i <= 0 || endp == str || *endp)
+		return -1;
 	return i;
 }
 
@@ -182,6 +183,5 @@ int main(int argc, char **restrict argv) {
 		if (error)
 			return 1;
 	}
-
 	return 0;
 }

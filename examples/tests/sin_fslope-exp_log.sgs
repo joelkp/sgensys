@@ -1,5 +1,5 @@
-# Increase and decrease frequency smoothly,
-# using slope types 'exp' and 'log'.
+// Increase and decrease frequency smoothly,
+// using slope types 'exp' and 'log'.
 
 Osin	f300 f{cexp t1 v1200} t1
 ;	f{cexp t1 v300} t2.5

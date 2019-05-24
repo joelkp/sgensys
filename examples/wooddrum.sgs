@@ -1,4 +1,4 @@
-# Chowning-esque test sound(s)
+// Chowning-esque test sound(s)
 
 Osin f80 t0.2 p+[
 	Osin r(55/80) a0.75 a{v1.0 t(0.2*2/10)} t(0.2*2/10)
