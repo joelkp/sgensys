@@ -1,4 +1,4 @@
-/* ssndgen: Script lexer module.
+/* saugns: Script lexer module.
  * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -43,10 +43,10 @@
 
 #define STRBUF_LEN 1024
 
-struct SSG_Lexer {
-	SSG_Scanner *sc;
-	SSG_SymTab *symtab;
-	SSG_ScriptToken token;
+struct SAU_Lexer {
+	SAU_Scanner *sc;
+	SAU_SymTab *symtab;
+	SAU_ScriptToken token;
 };
 
 /**
@@ -54,96 +54,96 @@ struct SSG_Lexer {
  *
  * \return instance, or NULL on failure.
  */
-SSG_Lexer *SSG_create_Lexer(SSG_SymTab *restrict symtab) {
+SAU_Lexer *SAU_create_Lexer(SAU_SymTab *restrict symtab) {
 	if (!symtab)
 		return NULL;
-	SSG_Lexer *o = calloc(1, sizeof(SSG_Lexer));
+	SAU_Lexer *o = calloc(1, sizeof(SAU_Lexer));
 	if (!o)
 		return NULL;
-	o->sc = SSG_create_Scanner(symtab);
+	o->sc = SAU_create_Scanner(symtab);
 	if (!o->sc) goto ERROR;
 	o->symtab = symtab;
-#if SSG_LEXER_QUIET
-	o->sc->s_flags |= SSG_SCAN_S_QUIET;
+#if SAU_LEXER_QUIET
+	o->sc->s_flags |= SAU_SCAN_S_QUIET;
 #endif
 	return o;
 ERROR:
-	SSG_destroy_Lexer(o);
+	SAU_destroy_Lexer(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SSG_destroy_Lexer(SSG_Lexer *restrict o) {
+void SAU_destroy_Lexer(SAU_Lexer *restrict o) {
 	if (!o)
 		return;
-	SSG_destroy_Scanner(o->sc);
+	SAU_destroy_Scanner(o->sc);
 	free(o);
 }
 
 /**
  * Open file for reading.
  *
- * Wrapper around SSG_Scanner functions. \p script may be
+ * Wrapper around SAU_Scanner functions. \p script may be
  * either a file path or a string, depending on \p is_path.
  *
  * \return true on success
  */
-bool SSG_Lexer_open(SSG_Lexer *restrict o,
+bool SAU_Lexer_open(SAU_Lexer *restrict o,
 		const char *restrict script, bool is_path) {
-	return SSG_Scanner_open(o->sc, script, is_path);
+	return SAU_Scanner_open(o->sc, script, is_path);
 }
 
 /**
  * Close file (if open).
  */
-void SSG_Lexer_close(SSG_Lexer *restrict o) {
-	SSG_Scanner_close(o->sc);
+void SAU_Lexer_close(SAU_Lexer *restrict o) {
+	SAU_Scanner_close(o->sc);
 }
 
-static void handle_invalid(SSG_Lexer *o, uint8_t c SSG__maybe_unused) {
-	SSG_ScriptToken *t = &o->token;
-	t->type = SSG_T_INVALID;
+static void handle_invalid(SAU_Lexer *o, uint8_t c SAU__maybe_unused) {
+	SAU_ScriptToken *t = &o->token;
+	t->type = SAU_T_INVALID;
 	t->data.b = 0;
 }
 
-static void handle_eof(SSG_Lexer *restrict o,
-		uint8_t c SSG__maybe_unused) {
-	SSG_Scanner *sc = o->sc;
-	SSG_ScriptToken *t = &o->token;
-	t->type = SSG_T_INVALID;
-	t->data.b = SSG_File_STATUS(sc->f);
+static void handle_eof(SAU_Lexer *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_Scanner *sc = o->sc;
+	SAU_ScriptToken *t = &o->token;
+	t->type = SAU_T_INVALID;
+	t->data.b = SAU_File_STATUS(sc->f);
 	//puts("EOF");
 }
 
-static void handle_special(SSG_Lexer *restrict o, uint8_t c) {
-	SSG_ScriptToken *t = &o->token;
-	t->type = SSG_T_SPECIAL;
+static void handle_special(SAU_Lexer *restrict o, uint8_t c) {
+	SAU_ScriptToken *t = &o->token;
+	t->type = SAU_T_SPECIAL;
 	t->data.c = c;
 	//putchar(c);
 }
 
-static void handle_numeric_value(SSG_Lexer *restrict o,
-		uint8_t c SSG__maybe_unused) {
-	SSG_Scanner *sc = o->sc;
-	SSG_ScriptToken *t = &o->token;
+static void handle_numeric_value(SAU_Lexer *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_Scanner *sc = o->sc;
+	SAU_ScriptToken *t = &o->token;
 	double d;
-	SSG_Scanner_ungetc(sc);
-	SSG_Scanner_getd(sc, &d, false, NULL, NULL);
-	t->type = SSG_T_VAL_REAL;
+	SAU_Scanner_ungetc(sc);
+	SAU_Scanner_getd(sc, &d, false, NULL, NULL);
+	t->type = SAU_T_VAL_REAL;
 	t->data.f = d;
 	//printf("num == %f\n", d);
 }
 
-static void handle_identifier(SSG_Lexer *restrict o,
-		uint8_t c SSG__maybe_unused) {
-	SSG_Scanner *sc = o->sc;
-	SSG_ScriptToken *t = &o->token;
-	SSG_SymStr *symstr;
-	SSG_Scanner_ungetc(sc);
-	SSG_Scanner_get_symstr(sc, &symstr);
-	t->type = SSG_T_ID_STR;
+static void handle_identifier(SAU_Lexer *restrict o,
+		uint8_t c SAU__maybe_unused) {
+	SAU_Scanner *sc = o->sc;
+	SAU_ScriptToken *t = &o->token;
+	SAU_SymStr *symstr;
+	SAU_Scanner_ungetc(sc);
+	SAU_Scanner_get_symstr(sc, &symstr);
+	t->type = SAU_T_ID_STR;
 	t->data.id = symstr ? symstr->key : NULL;
 	//printf("str == %s\n", str);
 }
@@ -151,24 +151,24 @@ static void handle_identifier(SSG_Lexer *restrict o,
 /**
  * Get the next token from the current file.
  *
- * Upon end of file, an SSG_T_INVALID token is set and false is
+ * Upon end of file, an SAU_T_INVALID token is set and false is
  * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SSG_T_INVALID token simply means that
+ * (If true is returned, an SAU_T_INVALID token simply means that
  * invalid input was successfully registered in the current file.)
  *
  * \return true if a token was successfully read from the file
  */
-bool SSG_Lexer_get(SSG_Lexer *restrict o, SSG_ScriptToken *restrict t) {
-	SSG_Scanner *sc = o->sc;
+bool SAU_Lexer_get(SAU_Lexer *restrict o, SAU_ScriptToken *restrict t) {
+	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 REGET:
-	c = SSG_Scanner_getc_nospace(sc);
+	c = SAU_Scanner_getc_nospace(sc);
 	switch (c) {
 	case 0x00:
 		handle_eof(o, c);
 		break;
-	case SSG_SCAN_LNBRK:
-	case SSG_SCAN_SPACE:
+	case SAU_SCAN_LNBRK:
+	case SAU_SCAN_SPACE:
 		goto REGET;
 	case '!':
 	case '"':
@@ -292,19 +292,19 @@ REGET:
  * Get the next token from the current file. Interprets any visible ASCII
  * character as a special token character.
  *
- * Upon end of file, an SSG_T_INVALID token is set and false is
+ * Upon end of file, an SAU_T_INVALID token is set and false is
  * returned. The field data.b is assigned the file reading status.
- * (If true is returned, an SSG_T_INVALID token simply means that
+ * (If true is returned, an SAU_T_INVALID token simply means that
  * invalid input was successfully registered in the current file.)
  *
  * \return true if a token was successfully read from the file
  */
-bool SSG_Lexer_get_special(SSG_Lexer *restrict o,
-		SSG_ScriptToken *restrict t) {
-	SSG_Scanner *sc = o->sc;
+bool SAU_Lexer_get_special(SAU_Lexer *restrict o,
+		SAU_ScriptToken *restrict t) {
+	SAU_Scanner *sc = o->sc;
 	uint8_t c;
 	for (;;) {
-		c = SSG_Scanner_getc_nospace(sc);
+		c = SAU_Scanner_getc_nospace(sc);
 		if (c == 0) {
 			handle_eof(o, c);
 			break;

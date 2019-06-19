@@ -1,4 +1,4 @@
-/* ssndgen: Audio program interpreter module.
+/* saugns: Audio program interpreter module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -16,28 +16,28 @@
 #include "mixer.h"
 #include <stdio.h>
 
-#define BUF_LEN SSG_MIX_BUFLEN
+#define BUF_LEN SAU_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
 
-struct SSG_Interp {
-	const SSG_Program *prg;
+struct SAU_Interp {
+	const SAU_Program *prg;
 	uint32_t srate;
 	uint32_t buf_count;
 	Buf *bufs;
-	SSG_Mixer *mixer;
+	SAU_Mixer *mixer;
 	size_t event, ev_count;
 	EventNode **events;
 	uint32_t event_pos;
 	uint16_t voice, vo_count;
 	VoiceNode *voices;
 	OperatorNode *operators;
-	SSG_MemPool *mem;
+	SAU_MemPool *mem;
 };
 
-static bool init_for_program(SSG_Interp *restrict o,
-		const SSG_Program *restrict prg, uint32_t srate) {
-	SSG_PreAlloc pa;
-	if (!SSG_fill_PreAlloc(&pa, prg, srate, o->mem))
+static bool init_for_program(SAU_Interp *restrict o,
+		const SAU_Program *restrict prg, uint32_t srate) {
+	SAU_PreAlloc pa;
+	if (!SAU_fill_PreAlloc(&pa, prg, srate, o->mem))
 		return false;
 	o->prg = prg;
 	o->srate = srate;
@@ -47,19 +47,19 @@ static bool init_for_program(SSG_Interp *restrict o,
 	o->voices = pa.voices;
 	o->vo_count = pa.vo_count;
 	if (pa.max_bufs > 0) {
-		o->bufs = SSG_MemPool_alloc(o->mem,
+		o->bufs = SAU_MemPool_alloc(o->mem,
 				pa.max_bufs * sizeof(Buf));
 		if (!o->bufs) goto ERROR;
 		o->buf_count = pa.max_bufs;
 	}
-	o->mixer = SSG_create_Mixer();
+	o->mixer = SAU_create_Mixer();
 	if (!o->mixer) goto ERROR;
 
 	float scale = 1.f;
-	if ((prg->mode & SSG_PMODE_AMP_DIV_VOICES) != 0)
+	if ((prg->mode & SAU_PMODE_AMP_DIV_VOICES) != 0)
 		scale /= o->vo_count;
-	SSG_Mixer_set_srate(o->mixer, srate);
-	SSG_Mixer_set_scale(o->mixer, scale);
+	SAU_Mixer_set_srate(o->mixer, srate);
+	SAU_Mixer_set_scale(o->mixer, scale);
 	return true;
 ERROR:
 	return false;
@@ -68,44 +68,44 @@ ERROR:
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SSG_Interp *SSG_create_Interp(const SSG_Program *restrict prg,
+SAU_Interp *SAU_create_Interp(const SAU_Program *restrict prg,
 		uint32_t srate) {
-	SSG_MemPool *mem = SSG_create_MemPool(0);
+	SAU_MemPool *mem = SAU_create_MemPool(0);
 	if (!mem)
 		return NULL;
-	SSG_Interp *o = SSG_MemPool_alloc(mem, sizeof(SSG_Interp));
+	SAU_Interp *o = SAU_MemPool_alloc(mem, sizeof(SAU_Interp));
 	if (!o) {
-		SSG_destroy_MemPool(mem);
+		SAU_destroy_MemPool(mem);
 		return NULL;
 	}
 	o->mem = mem;
 	if (!init_for_program(o, prg, srate)) {
-		SSG_destroy_Interp(o);
+		SAU_destroy_Interp(o);
 		return NULL;
 	}
-	SSG_global_init_Wave();
+	SAU_global_init_Wave();
 	return o;
 }
 
 /**
  * Destroy instance.
  */
-void SSG_destroy_Interp(SSG_Interp *restrict o) {
+void SAU_destroy_Interp(SAU_Interp *restrict o) {
 	if (!o)
 		return;
-	SSG_destroy_Mixer(o->mixer);
-	SSG_destroy_MemPool(o->mem);
+	SAU_destroy_Mixer(o->mixer);
+	SAU_destroy_MemPool(o->mem);
 }
 
 /*
  * Set voice duration according to the current list of operators.
  */
-static void set_voice_duration(SSG_Interp *restrict o,
+static void set_voice_duration(SAU_Interp *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
 	for (uint32_t i = 0; i < vn->graph_count; ++i) {
-		const SSG_ProgramOpRef *or = &vn->graph[i];
-		if (or->use != SSG_POP_CARR) continue;
+		const SAU_ProgramOpRef *or = &vn->graph[i];
+		if (or->use != SAU_POP_CARR) continue;
 		OperatorNode *on = &o->operators[or->id];
 		if (on->time > time)
 			time = on->time;
@@ -116,19 +116,19 @@ static void set_voice_duration(SSG_Interp *restrict o,
 /*
  * Process an event update for a ramp parameter.
  */
-static void handle_ramp_update(SSG_Ramp *restrict ramp,
+static void handle_ramp_update(SAU_Ramp *restrict ramp,
 		uint32_t *restrict ramp_pos,
-		const SSG_Ramp *restrict ramp_src) {
-	if ((ramp_src->flags & SSG_RAMPP_GOAL) != 0) {
+		const SAU_Ramp *restrict ramp_src) {
+	if ((ramp_src->flags & SAU_RAMPP_GOAL) != 0) {
 		*ramp_pos = 0;
 	}
-	SSG_Ramp_copy(ramp, ramp_src);
+	SAU_Ramp_copy(ramp, ramp_src);
 }
 
 /*
  * Process one event; to be called for the event when its time comes.
  */
-static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
+static void handle_event(SAU_Interp *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		/*
 		 * Set state of operator and/or voice.
@@ -136,54 +136,54 @@ static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
 		 * Voice updates must be done last, to take into account
 		 * updates for their operators.
 		 */
-		const SSG_ProgramEvent *prg_e = e->prg_e;
+		const SAU_ProgramEvent *prg_e = e->prg_e;
 		for (size_t i = 0; i < prg_e->op_data_count; ++i) {
-			const SSG_ProgramOpData *od = &prg_e->op_data[i];
+			const SAU_ProgramOpData *od = &prg_e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
 			on->fmods = od->fmods;
 			on->pmods = od->pmods;
 			on->amods = od->amods;
-			if (params & SSG_POPP_WAVE)
-				on->osc.lut = SSG_Osc_LUT(od->wave);
-			if (params & SSG_POPP_TIME) {
-				const SSG_Time *src = &od->time;
-				if (src->flags & SSG_TIMEP_LINKED) {
+			if (params & SAU_POPP_WAVE)
+				on->osc.lut = SAU_Osc_LUT(od->wave);
+			if (params & SAU_POPP_TIME) {
+				const SAU_Time *src = &od->time;
+				if (src->flags & SAU_TIMEP_LINKED) {
 					on->time = 0;
 					on->flags |= ON_TIME_INF;
 				} else {
-					on->time = SSG_MS_IN_SAMPLES(src->v_ms,
+					on->time = SAU_MS_IN_SAMPLES(src->v_ms,
 							o->srate);
 					on->flags &= ~ON_TIME_INF;
 				}
 			}
-			if (params & SSG_POPP_SILENCE)
-				on->silence = SSG_MS_IN_SAMPLES(od->silence_ms,
+			if (params & SAU_POPP_SILENCE)
+				on->silence = SAU_MS_IN_SAMPLES(od->silence_ms,
 						o->srate);
-			if (params & SSG_POPP_FREQ)
+			if (params & SAU_POPP_FREQ)
 				handle_ramp_update(&on->freq,
 						&on->freq_pos, &od->freq);
-			if (params & SSG_POPP_FREQ2)
+			if (params & SAU_POPP_FREQ2)
 				handle_ramp_update(&on->freq2,
 						&on->freq2_pos, &od->freq2);
-			if (params & SSG_POPP_PHASE)
-				on->osc.phase = SSG_Osc_PHASE(od->phase);
-			if (params & SSG_POPP_AMP)
+			if (params & SAU_POPP_PHASE)
+				on->osc.phase = SAU_Osc_PHASE(od->phase);
+			if (params & SAU_POPP_AMP)
 				handle_ramp_update(&on->amp,
 						&on->amp_pos, &od->amp);
-			if (params & SSG_POPP_AMP2)
+			if (params & SAU_POPP_AMP2)
 				handle_ramp_update(&on->amp2,
 						&on->amp2_pos, &od->amp2);
 		}
-		if (prg_e->vo_id != SSG_PVO_NO_ID) {
-			const SSG_ProgramVoData *vd = prg_e->vo_data;
+		if (prg_e->vo_id != SAU_PVO_NO_ID) {
+			const SAU_ProgramVoData *vd = prg_e->vo_data;
 			VoiceNode *vn = &o->voices[prg_e->vo_id];
 			uint32_t params = (vd != NULL) ? vd->params : 0;
 			if (e->graph != NULL) {
 				vn->graph = e->graph;
 				vn->graph_count = e->graph_count;
 			}
-			if (params & SSG_PVOP_PAN)
+			if (params & SAU_PVOP_PAN)
 				handle_ramp_update(&vn->pan,
 						&vn->pan_pos, &vd->pan);
 			vn->flags |= VN_INIT;
@@ -206,7 +206,7 @@ static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
  *
  * Returns number of samples generated for the node.
  */
-static uint32_t run_block(SSG_Interp *restrict o,
+static uint32_t run_block(SAU_Interp *restrict o,
 		Buf *restrict bufs, uint32_t buf_len,
 		OperatorNode *restrict n,
 		float *restrict parent_freq,
@@ -253,10 +253,10 @@ static uint32_t run_block(SSG_Interp *restrict o,
 	 * if modulators linked.
 	 */
 	freq = *(bufs++);
-	SSG_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
+	SAU_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
 	if (n->fmods->count > 0) {
 		float *freq2 = *(bufs++);
-		SSG_Ramp_run(&n->freq2, &n->freq2_pos,
+		SAU_Ramp_run(&n->freq2, &n->freq2_pos,
 				freq2, len, o->srate, parent_freq);
 		const uint32_t *fmods = n->fmods->ids;
 		for (i = 0; i < n->fmods->count; ++i)
@@ -266,7 +266,7 @@ static uint32_t run_block(SSG_Interp *restrict o,
 		for (i = 0; i < len; ++i)
 			freq[i] += (freq2[i] - freq[i]) * fm_buf[i];
 	} else {
-		SSG_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
+		SAU_Ramp_skip(&n->freq2, &n->freq2_pos, len, o->srate);
 	}
 	/*
 	 * If phase modulators linked, get phase offsets for modulation.
@@ -284,10 +284,10 @@ static uint32_t run_block(SSG_Interp *restrict o,
 	 * modulators linked.
 	 */
 	amp = *(bufs++);
-	SSG_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
+	SAU_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
 	if (n->amods->count > 0) {
 		float *amp2 = *(bufs++);
-		SSG_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
+		SAU_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
 		const uint32_t *amods = n->amods->ids;
 		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, bufs, len, &o->operators[amods[i]],
@@ -296,12 +296,12 @@ static uint32_t run_block(SSG_Interp *restrict o,
 		for (i = 0; i < len; ++i)
 			amp[i] += (amp2[i] - amp[i]) * am_buf[i];
 	} else {
-		SSG_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
+		SAU_Ramp_skip(&n->amp2, &n->amp2_pos, len, o->srate);
 	}
 	if (!wave_env) {
-		SSG_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
+		SAU_Osc_run(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
 	} else {
-		SSG_Osc_run_env(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
+		SAU_Osc_run_env(&n->osc, s_buf, len, acc_ind, freq, amp, pm_buf);
 	}
 	/*
 	 * Update time duration left, zero rest of buffer if unfilled.
@@ -324,10 +324,10 @@ static uint32_t run_block(SSG_Interp *restrict o,
  *
  * \return number of samples generated
  */
-static uint32_t run_voice(SSG_Interp *restrict o,
+static uint32_t run_voice(SAU_Interp *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	uint32_t out_len = 0;
-	const SSG_ProgramOpRef *ops = vn->graph;
+	const SAU_ProgramOpRef *ops = vn->graph;
 	uint32_t opc = vn->graph_count;
 	if (!ops)
 		return 0;
@@ -340,7 +340,7 @@ static uint32_t run_voice(SSG_Interp *restrict o,
 	for (i = 0; i < opc; ++i) {
 		uint32_t last_len;
 		// TODO: finish redesign
-		if (ops[i].use != SSG_POP_CARR) continue;
+		if (ops[i].use != SAU_POP_CARR) continue;
 		OperatorNode *n = &o->operators[ops[i].id];
 		if (n->time == 0) continue;
 		last_len = run_block(o, o->bufs, time, n,
@@ -348,7 +348,7 @@ static uint32_t run_voice(SSG_Interp *restrict o,
 		if (last_len > out_len) out_len = last_len;
 	}
 	if (out_len > 0) {
-		SSG_Mixer_add(o->mixer, o->bufs[0], out_len,
+		SAU_Mixer_add(o->mixer, o->bufs[0], out_len,
 				&vn->pan, &vn->pan_pos);
 	}
 	vn->duration -= time;
@@ -362,14 +362,14 @@ static uint32_t run_voice(SSG_Interp *restrict o,
  *
  * \return number of samples generated
  */
-static uint32_t run_for_time(SSG_Interp *restrict o,
+static uint32_t run_for_time(SAU_Interp *restrict o,
 		uint32_t time, int16_t *restrict buf) {
 	int16_t *sp = buf;
 	uint32_t gen_len = 0;
 	while (time > 0) {
 		uint32_t len = time;
 		if (len > BUF_LEN) len = BUF_LEN;
-		SSG_Mixer_clear(o->mixer);
+		SAU_Mixer_clear(o->mixer);
 		uint32_t last_len = 0;
 		for (uint32_t i = o->voice; i < o->vo_count; ++i) {
 			VoiceNode *vn = &o->voices[i];
@@ -398,7 +398,7 @@ static uint32_t run_for_time(SSG_Interp *restrict o,
 		time -= len;
 		if (last_len > 0) {
 			gen_len += last_len;
-			SSG_Mixer_write(o->mixer, &sp, last_len);
+			SAU_Mixer_write(o->mixer, &sp, last_len);
 		}
 	}
 	return gen_len;
@@ -407,11 +407,11 @@ static uint32_t run_for_time(SSG_Interp *restrict o,
 /*
  * Any error checking following audio generation goes here.
  */
-static void check_final_state(SSG_Interp *restrict o) {
+static void check_final_state(SAU_Interp *restrict o) {
 	for (uint16_t i = 0; i < o->vo_count; ++i) {
 		VoiceNode *vn = &o->voices[i];
 		if (!(vn->flags & VN_INIT)) {
-			SSG_warning("interp",
+			SAU_warning("interp",
 "voice %hd left uninitialized (never used)", i);
 		}
 	}
@@ -424,7 +424,7 @@ static void check_final_state(SSG_Interp *restrict o) {
  *
  * \return number of samples generated, buf_len unless signal ended
  */
-size_t SSG_Interp_run(SSG_Interp *restrict o,
+size_t SAU_Interp_run(SAU_Interp *restrict o,
 		int16_t *restrict buf, size_t buf_len) {
 	int16_t *sp = buf;
 	uint32_t i, len = buf_len;
@@ -489,9 +489,9 @@ PROCESS:
 	return buf_len;
 }
 
-static void print_graph(const SSG_ProgramOpRef *restrict graph,
+static void print_graph(const SAU_ProgramOpRef *restrict graph,
 		uint32_t count) {
-	static const char *const uses[SSG_POP_USES] = {
+	static const char *const uses[SAU_POP_USES] = {
 		"CA",
 		"FM",
 		"PM",
@@ -521,21 +521,21 @@ static void print_graph(const SSG_ProgramOpRef *restrict graph,
 /**
  * Print information about contents to be interpreted.
  */
-void SSG_Interp_print(const SSG_Interp *restrict o) {
-	SSG_Program_print_info(o->prg, "Program: \"", "\"");
+void SAU_Interp_print(const SAU_Interp *restrict o) {
+	SAU_Program_print_info(o->prg, "Program: \"", "\"");
 	for (size_t ev_id = 0; ev_id < o->ev_count; ++ev_id) {
 		const EventNode *ev = o->events[ev_id];
-		const SSG_ProgramEvent *prg_ev = ev->prg_e;
-		const SSG_ProgramVoData *prg_vd = prg_ev->vo_data;
+		const SAU_ProgramEvent *prg_ev = ev->prg_e;
+		const SAU_ProgramVoData *prg_vd = prg_ev->vo_data;
 		fprintf(stdout,
 			"\\%d \tEV %zd \t(VO %hd)",
 			prg_ev->wait_ms, ev_id, prg_ev->vo_id);
 		if (prg_vd != NULL) {
-			SSG_ProgramEvent_print_voice(prg_ev);
-			if (prg_vd->params & SSG_PVOP_GRAPH)
+			SAU_ProgramEvent_print_voice(prg_ev);
+			if (prg_vd->params & SAU_PVOP_GRAPH)
 				print_graph(ev->graph, ev->graph_count);
 		}
-		SSG_ProgramEvent_print_operators(prg_ev);
+		SAU_ProgramEvent_print_operators(prg_ev);
 		putc('\n', stdout);
 	}
 }

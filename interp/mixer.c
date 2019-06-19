@@ -1,4 +1,4 @@
-/* ssndgen: Audio mixer module.
+/* saugns: Audio mixer module.
  * Copyright (c) 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,28 +19,28 @@
 /**
  * Create instance.
  */
-SSG_Mixer *SSG_create_Mixer(void) {
-	SSG_Mixer *o = calloc(1, sizeof(SSG_Mixer));
+SAU_Mixer *SAU_create_Mixer(void) {
+	SAU_Mixer *o = calloc(1, sizeof(SAU_Mixer));
 	if (!o)
 		return NULL;
-	o->mix_l = calloc(SSG_MIX_BUFLEN, sizeof(float));
+	o->mix_l = calloc(SAU_MIX_BUFLEN, sizeof(float));
 	if (!o->mix_l) goto ERROR;
-	o->mix_r = calloc(SSG_MIX_BUFLEN, sizeof(float));
+	o->mix_r = calloc(SAU_MIX_BUFLEN, sizeof(float));
 	if (!o->mix_r) goto ERROR;
-	o->pan_buf = calloc(SSG_MIX_BUFLEN, sizeof(float));
+	o->pan_buf = calloc(SAU_MIX_BUFLEN, sizeof(float));
 	if (!o->pan_buf) goto ERROR;
-	SSG_Mixer_set_scale(o, 1.f);
+	SAU_Mixer_set_scale(o, 1.f);
 	return o;
 
 ERROR:
-	SSG_destroy_Mixer(o);
+	SAU_destroy_Mixer(o);
 	return NULL;
 }
 
 /**
  * Destroy instance.
  */
-void SSG_destroy_Mixer(SSG_Mixer *restrict o) {
+void SAU_destroy_Mixer(SAU_Mixer *restrict o) {
 	if (!o)
 		return;
 	free(o->mix_l);
@@ -52,9 +52,9 @@ void SSG_destroy_Mixer(SSG_Mixer *restrict o) {
 /**
  * Clear the mix buffers.
  */
-void SSG_Mixer_clear(SSG_Mixer *restrict o) {
-	memset(o->mix_l, 0, sizeof(float) * SSG_MIX_BUFLEN);
-	memset(o->mix_r, 0, sizeof(float) * SSG_MIX_BUFLEN);
+void SAU_Mixer_clear(SAU_Mixer *restrict o) {
+	memset(o->mix_l, 0, sizeof(float) * SAU_MIX_BUFLEN);
+	memset(o->mix_r, 0, sizeof(float) * SAU_MIX_BUFLEN);
 }
 
 /**
@@ -63,11 +63,11 @@ void SSG_Mixer_clear(SSG_Mixer *restrict o) {
  *
  * Sample rate needs to be set if \p pan has curve enabled.
  */
-void SSG_Mixer_add(SSG_Mixer *restrict o,
+void SAU_Mixer_add(SAU_Mixer *restrict o,
 		float *restrict buf, size_t len,
-		SSG_Ramp *restrict pan, uint32_t *restrict pan_pos) {
-	if (pan->flags & SSG_RAMPP_GOAL) {
-		SSG_Ramp_run(pan, pan_pos, o->pan_buf, len, o->srate, NULL);
+		SAU_Ramp *restrict pan, uint32_t *restrict pan_pos) {
+	if (pan->flags & SAU_RAMPP_GOAL) {
+		SAU_Ramp_run(pan, pan_pos, o->pan_buf, len, o->srate, NULL);
 		for (size_t i = 0; i < len; ++i) {
 			float s = buf[i] * o->scale;
 			float s_r = s * o->pan_buf[i];
@@ -89,7 +89,7 @@ void SSG_Mixer_add(SSG_Mixer *restrict o,
  * into a 16-bit stereo (interleaved) buffer
  * pointed to by \p spp. Advances \p spp.
  */
-void SSG_Mixer_write(SSG_Mixer *restrict o,
+void SAU_Mixer_write(SAU_Mixer *restrict o,
 		int16_t **restrict spp, size_t len) {
 	for (size_t i = 0; i < len; ++i) {
 		float s_l = o->mix_l[i];

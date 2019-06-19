@@ -1,4 +1,4 @@
-/* ssndgen: Oscillator implementation.
+/* saugns: Oscillator implementation.
  * Copyright (c) 2011, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -26,7 +26,7 @@
  *
  * \p pm_f may be NULL for no PM input.
  */
-void SSG_Osc_run(SSG_Osc *restrict o,
+void SAU_Osc_run(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
@@ -37,7 +37,7 @@ void SSG_Osc_run(SSG_Osc *restrict o,
 		if (pm_f != NULL) {
 			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SSG_Osc_get(o, freq[i], s_pm) * amp[i];
+		float s = SAU_Osc_get(o, freq[i], s_pm) * amp[i];
 		if (layer > 0) s += buf[i];
 		buf[i] = s;
 	}
@@ -53,7 +53,7 @@ void SSG_Osc_run(SSG_Osc *restrict o,
  *
  * \p pm_f may be NULL for no PM input.
  */
-void SSG_Osc_run_env(SSG_Osc *restrict o,
+void SAU_Osc_run_env(SAU_Osc *restrict o,
 		float *restrict buf, size_t buf_len,
 		uint32_t layer,
 		const float *restrict freq,
@@ -64,7 +64,7 @@ void SSG_Osc_run_env(SSG_Osc *restrict o,
 		if (pm_f != NULL) {
 			s_pm = lrintf(pm_f[i] * (float) INT32_MAX);
 		}
-		float s = SSG_Osc_get(o, freq[i], s_pm);
+		float s = SAU_Osc_get(o, freq[i], s_pm);
 		float s_amp = amp[i] * 0.5f;
 		s = (s * s_amp) + fabs(s_amp);
 		if (layer > 0) s *= buf[i];

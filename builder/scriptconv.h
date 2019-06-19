@@ -1,4 +1,4 @@
-/* ssndgen: Script data to audio program converter.
+/* saugns: Script data to audio program converter.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -21,38 +21,38 @@
  * Voice allocation state flags.
  */
 enum {
-	SSG_VAS_GRAPH = 1<<0,
+	SAU_VAS_GRAPH = 1<<0,
 };
 
 /**
  * Per-voice state used during program data allocation.
  */
-typedef struct SSG_VoAllocState {
-	SSG_ScriptEvData *last_sev;
-	const SSG_ProgramOpList *carriers;
-	SSG_ProgramVoData *vo_prev;
+typedef struct SAU_VoAllocState {
+	SAU_ScriptEvData *last_sev;
+	const SAU_ProgramOpList *carriers;
+	SAU_ProgramVoData *vo_prev;
 	uint32_t flags;
 	uint32_t duration_ms;
-} SSG_VoAllocState;
+} SAU_VoAllocState;
 
-SSG_DEF_ArrType(SSG_VoAlloc, SSG_VoAllocState, _)
+SAU_DEF_ArrType(SAU_VoAlloc, SAU_VoAllocState, _)
 
 /**
  * Operator allocation state flags.
  */
 //enum {
-//	SSG_OAS_VISITED = 1<<0,
+//	SAU_OAS_VISITED = 1<<0,
 //};
 
 /**
  * Per-operator state used during program data allocation.
  */
-typedef struct SSG_OpAllocState {
-	SSG_ScriptOpData *last_sod;
-	const SSG_ProgramOpList *mod_lists[SSG_POP_USES - 1];
-	SSG_ProgramOpData *op_prev;
+typedef struct SAU_OpAllocState {
+	SAU_ScriptOpData *last_sod;
+	const SAU_ProgramOpList *mod_lists[SAU_POP_USES - 1];
+	SAU_ProgramOpData *op_prev;
 	uint32_t flags;
 	//uint32_t duration_ms;
-} SSG_OpAllocState;
+} SAU_OpAllocState;
 
-SSG_DEF_ArrType(SSG_OpAlloc, SSG_OpAllocState, _)
+SAU_DEF_ArrType(SAU_OpAlloc, SAU_OpAllocState, _)

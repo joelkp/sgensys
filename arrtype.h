@@ -1,4 +1,4 @@
-/* ssndgen: Generic array module.
+/* saugns: Generic array module.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,14 +25,14 @@
  * Each concrete type uses inline wrappers around generic methods.
  */
 
-struct SSG_MemPool;
+struct SAU_MemPool;
 
 /**
  * Declare array type using \p Name, with \p ElementType.
  *
- * Only declares type, not methods. See SSG_DEF_ArrType().
+ * Only declares type, not methods. See SAU_DEF_ArrType().
  */
-#define SSG_DEF_ArrType_TYPE(Name, ElementType) \
+#define SAU_DEF_ArrType_TYPE(Name, ElementType) \
 typedef struct Name { \
 	ElementType *a; \
 	size_t count; \
@@ -42,62 +42,62 @@ typedef struct Name { \
 /**
  * Declare array methods for \p Name, with \p ElementType.
  *
- * Only declares methods, not type. See SSG_DEF_ArrType().
+ * Only declares methods, not type. See SAU_DEF_ArrType().
  *
  * The Name_*() methods defined are inline wrappers around the
  * generic methods. If not blank, \p MethodPrefix will be used
  * to prefix their names.
  */
-#define SSG_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix) \
-static inline ElementType SSG__maybe_unused \
+#define SAU_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix) \
+static inline ElementType SAU__maybe_unused \
 *MethodPrefix##Name##_add(Name *restrict o, \
 		const ElementType *restrict item) { \
-	return SSG_ArrType_add(o, item, sizeof(ElementType)); \
+	return SAU_ArrType_add(o, item, sizeof(ElementType)); \
 } \
-static inline bool SSG__maybe_unused \
+static inline bool SAU__maybe_unused \
 MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
-	return SSG_ArrType_upsize(o, count, sizeof(ElementType)); \
+	return SAU_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
-static inline void SSG__maybe_unused \
+static inline void SAU__maybe_unused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
-	SSG_ArrType_clear(o); \
+	SAU_ArrType_clear(o); \
 } \
-static inline bool SSG__maybe_unused \
+static inline bool SAU__maybe_unused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		ElementType **restrict dst) { \
-	return SSG_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
+	return SAU_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
-static inline bool SSG__maybe_unused \
+static inline bool SAU__maybe_unused \
 MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 		ElementType **restrict dst, \
-		struct SSG_MemPool *restrict mempool) { \
-	return SSG_ArrType_mpmemdup(o, (void**) dst, \
+		struct SAU_MemPool *restrict mempool) { \
+	return SAU_ArrType_mpmemdup(o, (void**) dst, \
 		sizeof(ElementType), mempool); \
 }
 
 /**
  * Declare both type and methods for \p Name, with \p ElementType.
  *
- * Combines SSG_DEF_ArrType_TYPE() and SSG_DEF_ArrType_METHODS().
+ * Combines SAU_DEF_ArrType_TYPE() and SAU_DEF_ArrType_METHODS().
  *
  * The Name_*() methods defined are inline wrappers around the
  * generic methods. If not blank, \p MethodPrefix will be used
  * to prefix their names.
  */
-#define SSG_DEF_ArrType(Name, ElementType, MethodPrefix) \
-SSG_DEF_ArrType_TYPE(Name, ElementType) \
-SSG_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix)
+#define SAU_DEF_ArrType(Name, ElementType, MethodPrefix) \
+SAU_DEF_ArrType_TYPE(Name, ElementType) \
+SAU_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix)
 
-void *SSG_ArrType_add(void *restrict o,
+void *SAU_ArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
-bool SSG_ArrType_upsize(void *restrict o,
+bool SAU_ArrType_upsize(void *restrict o,
 		size_t count, size_t item_size);
-void SSG_ArrType_clear(void *restrict o);
-bool SSG_ArrType_memdup(void *restrict o,
+void SAU_ArrType_clear(void *restrict o);
+bool SAU_ArrType_memdup(void *restrict o,
 		void **restrict dst, size_t item_size);
-bool SSG_ArrType_mpmemdup(void *restrict o,
+bool SAU_ArrType_mpmemdup(void *restrict o,
 		void **restrict dst, size_t item_size,
-		struct SSG_MemPool *mempool);
+		struct SAU_MemPool *mempool);
 
 /** Byte (uint8_t) array type. */
-SSG_DEF_ArrType(SSG_ByteArr, uint8_t, )
+SAU_DEF_ArrType(SAU_ByteArr, uint8_t, )

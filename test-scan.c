@@ -1,4 +1,4 @@
-/* ssndgen: Test program for experimental reader code.
+/* saugns: Test program for experimental reader code.
  * Copyright (c) 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,8 +11,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "ssndgen.h"
-#if SSG_TEST_SCANNER
+#include "saugns.h"
+#if SAU_TEST_SCANNER
 # include "reader/scanner.h"
 #else
 # include "reader/lexer.h"
@@ -26,8 +26,8 @@
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool h_arg SSG__maybe_unused,
-		const char *restrict h_type SSG__maybe_unused) {
+static void print_usage(bool h_arg SAU__maybe_unused,
+		const char *restrict h_type SAU__maybe_unused) {
 	fputs(
 "Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
@@ -43,7 +43,7 @@ static void print_usage(bool h_arg SSG__maybe_unused,
  * Print version.
  */
 static void print_version(void) {
-	puts(NAME" ("SSG_CLINAME_STR") "SSG_VERSION_STR);
+	puts(NAME" ("SAU_CLINAME_STR") "SAU_VERSION_STR);
 }
 
 /*
@@ -55,7 +55,7 @@ static void print_version(void) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SSG_PtrArr *restrict script_args) {
+		SAU_PtrArr *restrict script_args) {
 	bool h_arg = false;
 	const char *h_type = NULL;
 	for (;;) {
@@ -68,19 +68,19 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SSG_PtrArr_add(script_args, (void*) arg);
+			SAU_PtrArr_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'c':
-			if ((*flags & SSG_ARG_MODE_FULL) != 0)
+			if ((*flags & SAU_ARG_MODE_FULL) != 0)
 				goto USAGE;
-			*flags |= SSG_ARG_MODE_CHECK;
+			*flags |= SAU_ARG_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= SSG_ARG_EVAL_STRING;
+			*flags |= SAU_ARG_EVAL_STRING;
 			break;
 		case 'h':
 			h_arg = true;
@@ -93,7 +93,7 @@ NEXT_C:
 			h_type = arg;
 			goto USAGE;
 		case 'p':
-			*flags |= SSG_ARG_PRINT_INFO;
+			*flags |= SAU_ARG_PRINT_INFO;
 			break;
 		case 'v':
 			print_version();
@@ -107,51 +107,51 @@ NEXT_C:
 USAGE:
 	print_usage(h_arg, h_type);
 CLEAR:
-	SSG_PtrArr_clear(script_args);
+	SAU_PtrArr_clear(script_args);
 	return false;
 }
 
 /*
  * Run script through test code.
  *
- * \return SSG_Program or NULL on error
+ * \return SAU_Program or NULL on error
  */
-static SSG_Program *build_program(const char *restrict script_arg,
+static SAU_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
-	SSG_Program *o = NULL;
-	SSG_MemPool *mempool = SSG_create_MemPool(0);
-	SSG_SymTab *symtab = SSG_create_SymTab(mempool);
+	SAU_Program *o = NULL;
+	SAU_MemPool *mempool = SAU_create_MemPool(0);
+	SAU_SymTab *symtab = SAU_create_SymTab(mempool);
 	if (!symtab)
 		return NULL;
-#if SSG_TEST_SCANNER
-	SSG_Scanner *scanner = SSG_create_Scanner(symtab);
+#if SAU_TEST_SCANNER
+	SAU_Scanner *scanner = SAU_create_Scanner(symtab);
 	if (!scanner) goto CLOSE;
-	if (!SSG_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Scanner_open(scanner, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		uint8_t c = SSG_Scanner_getc(scanner);
+		uint8_t c = SAU_Scanner_getc(scanner);
 		if (!c) {
 			putchar('\n');
 			break;
 		}
 		putchar(c);
 	}
-	o = (SSG_Program*) calloc(1, sizeof(SSG_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SSG_destroy_Scanner(scanner);
+	SAU_destroy_Scanner(scanner);
 #else
-	SSG_Lexer *lexer = SSG_create_Lexer(symtab);
+	SAU_Lexer *lexer = SAU_create_Lexer(symtab);
 	if (!lexer) goto CLOSE;
-	if (!SSG_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
+	if (!SAU_Lexer_open(lexer, script_arg, is_path)) goto CLOSE;
 	for (;;) {
-		SSG_ScriptToken token;
-		if (!SSG_Lexer_get(lexer, &token)) break;
+		SAU_ScriptToken token;
+		if (!SAU_Lexer_get(lexer, &token)) break;
 	}
-	o = (SSG_Program*) calloc(1, sizeof(SSG_Program)); // placeholder
+	o = (SAU_Program*) calloc(1, sizeof(SAU_Program)); // placeholder
 CLOSE:
-	SSG_destroy_Lexer(lexer);
+	SAU_destroy_Lexer(lexer);
 #endif
-	SSG_destroy_SymTab(symtab);
-	SSG_destroy_MemPool(mempool);
+	SAU_destroy_SymTab(symtab);
+	SAU_destroy_MemPool(mempool);
 	return o;
 }
 
@@ -161,15 +161,15 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrArr *restrict script_args, uint32_t options,
-		SSG_PtrArr *restrict prg_objs) {
-	bool are_paths = !(options & SSG_ARG_EVAL_STRING);
+size_t SAU_build(const SAU_PtrArr *restrict script_args, uint32_t options,
+		SAU_PtrArr *restrict prg_objs) {
+	bool are_paths = !(options & SAU_ARG_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SSG_PtrArr_ITEMS(script_args);
+	const char **args = (const char**) SAU_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
-		SSG_Program *prg = build_program(args[i], are_paths);
+		SAU_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SSG_PtrArr_add(prg_objs, prg);
+		SAU_PtrArr_add(prg_objs, prg);
 	}
 	return built;
 }
@@ -178,30 +178,30 @@ size_t SSG_build(const SSG_PtrArr *restrict script_args, uint32_t options,
  * Discard the programs in the list, ignoring NULL entries,
  * and clearing the list.
  */
-void SSG_discard(SSG_PtrArr *restrict prg_objs) {
-	SSG_Program **prgs = (SSG_Program**) SSG_PtrArr_ITEMS(prg_objs);
+void SAU_discard(SAU_PtrArr *restrict prg_objs) {
+	SAU_Program **prgs = (SAU_Program**) SAU_PtrArr_ITEMS(prg_objs);
 	for (size_t i = 0; i < prg_objs->count; ++i) {
 		free(prgs[i]); // for placeholder
 	}
-	SSG_PtrArr_clear(prg_objs);
+	SAU_PtrArr_clear(prg_objs);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SSG_PtrArr script_args = (SSG_PtrArr){0};
-	SSG_PtrArr prg_objs = (SSG_PtrArr){0};
+	SAU_PtrArr script_args = (SAU_PtrArr){0};
+	SAU_PtrArr prg_objs = (SAU_PtrArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !SSG_build(&script_args, options, &prg_objs);
-	SSG_PtrArr_clear(&script_args);
+	bool error = !SAU_build(&script_args, options, &prg_objs);
+	SAU_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
 		// no audio output
-		SSG_discard(&prg_objs);
+		SAU_discard(&prg_objs);
 	}
 	return 0;
 }

@@ -1,4 +1,4 @@
-/* ssndgen: Wave module.
+/* saugns: Wave module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,11 +19,11 @@
 #include "math.h"
 #include <stdio.h>
 
-#define HALFLEN (SSG_Wave_LEN>>1)
+#define HALFLEN (SAU_Wave_LEN>>1)
 
-float SSG_Wave_luts[SSG_WAVE_TYPES][SSG_Wave_LEN];
+float SAU_Wave_luts[SAU_WAVE_TYPES][SAU_Wave_LEN];
 
-const char *const SSG_Wave_names[SSG_WAVE_TYPES + 1] = {
+const char *const SAU_Wave_names[SAU_WAVE_TYPES + 1] = {
 	"sin",
 	"sqr",
 	"tri",
@@ -52,7 +52,7 @@ static void rep_range_sqr(float *restrict dst, const float *restrict src,
 	 * gives a higher-quality result with
 	 * very similar frequency roll-off.
 	 */
-	const float scale = (float) (SSG_Wave_LEN / num);
+	const float scale = (float) (SAU_Wave_LEN / num);
 	for (size_t i = from, end = from + num; i < end; ++i) {
 		dst[i] = tanhf(src[i] * scale);
 	}
@@ -85,7 +85,7 @@ static void rep_range_saw(float *restrict dst, const float *restrict src,
 	 * Requires inserting an extra zero value
 	 * at the cycle boundary (e.g. beginning).
 	 */
-	const float scale = (float) (SSG_Wave_LEN / num);
+	const float scale = (float) (SAU_Wave_LEN / num);
 	for (size_t i = from, end = from + num - skip; i < end; ++i) {
 		float s = tanhf(src[i + skip] * scale);
 		dst[i] = -1.f + s*2.f;
@@ -104,25 +104,25 @@ static void hmirror_range(float *restrict lut,
 }
 
 /**
- * Fill in the look-up tables enumerated by SSG_WAVE_*.
+ * Fill in the look-up tables enumerated by SAU_WAVE_*.
  *
  * If already initialized, return without doing anything.
  */
-void SSG_global_init_Wave(void) {
+void SAU_global_init_Wave(void) {
 	static bool done = false;
 	if (done)
 		return;
 	done = true;
 
-	float *const sin_lut = SSG_Wave_luts[SSG_WAVE_SIN];
-	float *const sqr_lut = SSG_Wave_luts[SSG_WAVE_SQR];
-	float *const tri_lut = SSG_Wave_luts[SSG_WAVE_TRI];
-	float *const saw_lut = SSG_Wave_luts[SSG_WAVE_SAW];
-	float *const sha_lut = SSG_Wave_luts[SSG_WAVE_SHA];
-	float *const szh_lut = SSG_Wave_luts[SSG_WAVE_SZH];
-	float *const ssr_lut = SSG_Wave_luts[SSG_WAVE_SSR];
+	float *const sin_lut = SAU_Wave_luts[SAU_WAVE_SIN];
+	float *const sqr_lut = SAU_Wave_luts[SAU_WAVE_SQR];
+	float *const tri_lut = SAU_Wave_luts[SAU_WAVE_TRI];
+	float *const saw_lut = SAU_Wave_luts[SAU_WAVE_SAW];
+	float *const sha_lut = SAU_Wave_luts[SAU_WAVE_SHA];
+	float *const szh_lut = SAU_Wave_luts[SAU_WAVE_SZH];
+	float *const ssr_lut = SAU_Wave_luts[SAU_WAVE_SSR];
 	int i;
-	const double val_scale = SSG_Wave_MAXVAL;
+	const double val_scale = SAU_Wave_MAXVAL;
 	const double len_scale = 1.f / HALFLEN;
 	/*
 	 * First half:
@@ -135,10 +135,10 @@ void SSG_global_init_Wave(void) {
 		const double x = i * len_scale;
 		const double x_rev = (HALFLEN-i) * len_scale;
 
-		const double sin_x = sin(SSG_PI * x);
+		const double sin_x = sin(SAU_PI * x);
 		sin_lut[i] = val_scale * sin_x;
 
-		sqr_lut[i] = SSG_Wave_MAXVAL;
+		sqr_lut[i] = SAU_Wave_MAXVAL;
 
 		if (i < (HALFLEN>>1))
 			tri_lut[i] = val_scale * 2.f * x;
@@ -172,7 +172,7 @@ void SSG_global_init_Wave(void) {
 	for (i = rsaw_len; i < HALFLEN; ++i) {
 		const double x = (i - rsaw_len) * saw_scale;
 
-		saw_lut[i+1 - saw_skip] = SSG_Wave_MAXVAL - x;
+		saw_lut[i+1 - saw_skip] = SAU_Wave_MAXVAL - x;
 	}
 	/* Second half:
 	 *  - sin
@@ -181,14 +181,14 @@ void SSG_global_init_Wave(void) {
 	 *  - saw
 	 *  - ssr
 	 */
-	for (; i < SSG_Wave_LEN; ++i) {
+	for (; i < SAU_Wave_LEN; ++i) {
 		sin_lut[i] = -sin_lut[i - HALFLEN];
 
 		sqr_lut[i] = -sqr_lut[i - HALFLEN];
 
 		tri_lut[i] = -tri_lut[i - HALFLEN];
 
-		saw_lut[i] = -saw_lut[(SSG_Wave_LEN-1) - (i-1)];
+		saw_lut[i] = -saw_lut[(SAU_Wave_LEN-1) - (i-1)];
 
 		ssr_lut[i] = -ssr_lut[i - HALFLEN];
 	}
@@ -196,21 +196,21 @@ void SSG_global_init_Wave(void) {
 	 *  - sha
 	 *  - szh
 	 */
-	for (i = 0; i < SSG_Wave_LEN; ++i) {
+	for (i = 0; i < SAU_Wave_LEN; ++i) {
 		const double x = i * len_scale;
 
-		double sha_x = sin((SSG_PI * x) * 0.5f + SSG_ASIN_1_2);
+		double sha_x = sin((SAU_PI * x) * 0.5f + SAU_ASIN_1_2);
 		sha_x = fabs(sha_x) - 0.5f;
 		sha_x += sha_x;
 		sha_lut[i] = val_scale * sha_x;
 
-		double szh_x = sin((SSG_PI * x) + SSG_ASIN_1_2);
+		double szh_x = sin((SAU_PI * x) + SAU_ASIN_1_2);
 		if (szh_x > 0.f) {
 			szh_x -= 0.5f;
 			szh_x += szh_x;
 			szh_lut[i] = val_scale * szh_x;
 		} else {
-			szh_lut[i] = -SSG_Wave_MAXVAL;
+			szh_lut[i] = -SAU_Wave_MAXVAL;
 		}
 	}
 }
@@ -218,13 +218,13 @@ void SSG_global_init_Wave(void) {
 /**
  * Print an index-value table for a LUT.
  */
-void SSG_Wave_print(uint8_t id) {
-	if (id >= SSG_WAVE_TYPES)
+void SAU_Wave_print(uint8_t id) {
+	if (id >= SAU_WAVE_TYPES)
 		return;
-	const float *lut = SSG_Wave_luts[id];
-	const char *lut_name = SSG_Wave_names[id];
+	const float *lut = SAU_Wave_luts[id];
+	const char *lut_name = SAU_Wave_names[id];
 	fprintf(stdout, "LUT: %s\n", lut_name);
-	for (int i = 0; i < SSG_Wave_LEN; ++i) {
+	for (int i = 0; i < SAU_Wave_LEN; ++i) {
 		float v = lut[i];
 		fprintf(stdout, "[\t%d]: \t%.11f\n", i, v);
 	}

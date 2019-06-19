@@ -1,4 +1,4 @@
-/* ssndgen: WAV file writer module.
+/* saugns: WAV file writer module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,12 +18,12 @@
 #pragma once
 #include "../common.h"
 
-struct SSG_WAVFile;
-typedef struct SSG_WAVFile SSG_WAVFile;
+struct SAU_WAVFile;
+typedef struct SAU_WAVFile SAU_WAVFile;
 
-SSG_WAVFile *SSG_create_WAVFile(const char *restrict fpath,
-		uint16_t channels, uint32_t srate) SSG__malloclike;
-int SSG_close_WAVFile(SSG_WAVFile *restrict o);
+SAU_WAVFile *SAU_create_WAVFile(const char *restrict fpath,
+		uint16_t channels, uint32_t srate) SAU__malloclike;
+int SAU_close_WAVFile(SAU_WAVFile *restrict o);
 
-bool SSG_WAVFile_write(SSG_WAVFile *restrict o,
+bool SAU_WAVFile_write(SAU_WAVFile *restrict o,
 		const int16_t *restrict buf, uint32_t samples);

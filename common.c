@@ -1,4 +1,4 @@
-/* ssndgen: Common definitions.
+/* saugns: Common definitions.
  * Copyright (c) 2011-2012, 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -42,7 +42,7 @@ static void print_stderr(const char *restrict msg_type,
  * Print warning message. If \p label is not NULL, it will be
  * added after "warning" within square brackets.
  */
-void SSG_warning(const char *restrict label, const char *restrict fmt, ...) {
+void SAU_warning(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("warning", label, fmt, ap);
@@ -53,7 +53,7 @@ void SSG_warning(const char *restrict label, const char *restrict fmt, ...) {
  * Print error message. If \p label is not NULL, it will be
  * added after "error" within square brackets.
  */
-void SSG_error(const char *restrict label, const char *restrict fmt, ...) {
+void SAU_error(const char *restrict label, const char *restrict fmt, ...) {
 	va_list ap;
 	va_start(ap, fmt);
 	print_stderr("error", label, fmt, ap);
@@ -67,7 +67,7 @@ void SSG_error(const char *restrict label, const char *restrict fmt, ...) {
  *
  * \return new allocation or NULL on failure
  */
-void *SSG_memdup(const void *restrict src, size_t size) {
+void *SAU_memdup(const void *restrict src, size_t size) {
 	if (!size)
 		return NULL;
 	if (!src)

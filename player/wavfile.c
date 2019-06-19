@@ -1,4 +1,4 @@
-/* ssndgen: WAV file writer module.
+/* saugns: WAV file writer module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -42,7 +42,7 @@ static void fputl(uint32_t i32, FILE *restrict stream) {
 #define SOUND_BITS 16
 #define SOUND_BYTES (SOUND_BITS / 8)
 
-struct SSG_WAVFile {
+struct SAU_WAVFile {
 	FILE *f;
 	uint16_t channels;
 	uint32_t samples;
@@ -50,19 +50,19 @@ struct SSG_WAVFile {
 
 /**
  * Create 16-bit WAV file for audio output. Sound data may thereafter be
- * written any number of times using SSG_WAVFile_write().
+ * written any number of times using SAU_WAVFile_write().
  *
  * \return instance or NULL if fopen fails
  */
-SSG_WAVFile *SSG_create_WAVFile(const char *restrict fpath,
+SAU_WAVFile *SAU_create_WAVFile(const char *restrict fpath,
 		uint16_t channels, uint32_t srate) {
 	FILE *f = fopen(fpath, "wb");
 	if (!f) {
-		SSG_error(NULL, "couldn't open WAV file \"%s\" for writing",
+		SAU_error(NULL, "couldn't open WAV file \"%s\" for writing",
 			fpath);
 		return NULL;
 	}
-	SSG_WAVFile *o = malloc(sizeof(SSG_WAVFile));
+	SAU_WAVFile *o = malloc(sizeof(SAU_WAVFile));
 	o->f = f;
 	o->channels = channels;
 	o->samples = 0;
@@ -93,7 +93,7 @@ SSG_WAVFile *SSG_create_WAVFile(const char *restrict fpath,
  *
  * \return true if write successful
  */
-bool SSG_WAVFile_write(SSG_WAVFile *restrict o,
+bool SAU_WAVFile_write(SAU_WAVFile *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	uint32_t written;
 	written = fwrite(buf, o->channels * SOUND_BYTES, samples, o->f);
@@ -109,7 +109,7 @@ bool SSG_WAVFile_write(SSG_WAVFile *restrict o,
  *
  * \return value of ferror, checked before closing file
  */
-int SSG_close_WAVFile(SSG_WAVFile *restrict o) {
+int SAU_close_WAVFile(SAU_WAVFile *restrict o) {
 	int err;
 	FILE *f = o->f;
 	uint32_t bytes = o->channels * o->samples * SOUND_BYTES;

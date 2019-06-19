@@ -1,4 +1,4 @@
-/* ssndgen: Audio program interpreter pre-run data allocator.
+/* saugns: Audio program interpreter pre-run data allocator.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,17 +18,17 @@
  * Voice graph traverser and data allocator.
  */
 
-static bool traverse_op_node(SSG_PreAlloc *restrict o,
-		SSG_ProgramOpRef *restrict op_ref);
+static bool traverse_op_node(SAU_PreAlloc *restrict o,
+		SAU_ProgramOpRef *restrict op_ref);
 
 /*
  * Traverse operator list, as part of building a graph for the voice.
  *
  * \return true, or false on allocation failure
  */
-static bool traverse_op_list(SSG_PreAlloc *restrict o,
-		const SSG_ProgramOpList *restrict op_list, uint8_t mod_use) {
-	SSG_ProgramOpRef op_ref = {0, mod_use, o->vg.nest_level};
+static bool traverse_op_list(SAU_PreAlloc *restrict o,
+		const SAU_ProgramOpList *restrict op_list, uint8_t mod_use) {
+	SAU_ProgramOpRef op_ref = {0, mod_use, o->vg.nest_level};
 	for (uint32_t i = 0; i < op_list->count; ++i) {
 		op_ref.id = op_list->ids[i];
 		if (!traverse_op_node(o, &op_ref))
@@ -43,11 +43,11 @@ static bool traverse_op_list(SSG_PreAlloc *restrict o,
  *
  * \return true, or false on allocation failure
  */
-static bool traverse_op_node(SSG_PreAlloc *restrict o,
-		SSG_ProgramOpRef *restrict op_ref) {
+static bool traverse_op_node(SAU_PreAlloc *restrict o,
+		SAU_ProgramOpRef *restrict op_ref) {
 	OperatorNode *on = &o->operators[op_ref->id];
 	if (on->flags & ON_VISITED) {
-		SSG_warning("voicegraph",
+		SAU_warning("voicegraph",
 "skipping operator %d; circular references unsupported",
 			op_ref->id);
 		return true;
@@ -57,15 +57,15 @@ static bool traverse_op_node(SSG_PreAlloc *restrict o,
 	}
 	++o->vg.nest_level;
 	on->flags |= ON_VISITED;
-	if (!traverse_op_list(o, on->fmods, SSG_POP_FMOD))
+	if (!traverse_op_list(o, on->fmods, SAU_POP_FMOD))
 		return false;
-	if (!traverse_op_list(o, on->pmods, SSG_POP_PMOD))
+	if (!traverse_op_list(o, on->pmods, SAU_POP_PMOD))
 		return false;
-	if (!traverse_op_list(o, on->amods, SSG_POP_AMOD))
+	if (!traverse_op_list(o, on->amods, SAU_POP_AMOD))
 		return false;
 	on->flags &= ~ON_VISITED;
 	--o->vg.nest_level;
-	if (!SSG_OpRefArr_add(&o->vg.vo_graph, op_ref))
+	if (!SAU_OpRefArr_add(&o->vg.vo_graph, op_ref))
 		return false;
 	return true;
 }
@@ -77,14 +77,14 @@ static bool traverse_op_node(SSG_PreAlloc *restrict o,
  *
  * \return true, or false on allocation failure
  */
-static bool set_voice_graph(SSG_PreAlloc *restrict o,
-		const SSG_ProgramVoData *restrict pvd,
+static bool set_voice_graph(SAU_PreAlloc *restrict o,
+		const SAU_ProgramVoData *restrict pvd,
 		EventNode *restrict ev) {
 	if (!pvd->carriers->count) goto DONE;
-	if (!traverse_op_list(o, pvd->carriers, SSG_POP_CARR))
+	if (!traverse_op_list(o, pvd->carriers, SAU_POP_CARR))
 		return false;
-	if (!SSG_OpRefArr_mpmemdup(&o->vg.vo_graph,
-				(SSG_ProgramOpRef**) &ev->graph, o->mem))
+	if (!SAU_OpRefArr_mpmemdup(&o->vg.vo_graph,
+				(SAU_ProgramOpRef**) &ev->graph, o->mem))
 		return false;
 	ev->graph_count = o->vg.vo_graph.count;
 DONE:
@@ -99,27 +99,27 @@ DONE:
 // maximum number of buffers needed for op nesting depth
 #define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
 
-static void init_operators(SSG_PreAlloc *restrict o) {
+static void init_operators(SAU_PreAlloc *restrict o) {
 	for (size_t i = 0; i < o->prg->op_count; ++i) {
 		OperatorNode *on = &o->operators[i];
-		SSG_init_Osc(&on->osc, o->srate);
+		SAU_init_Osc(&on->osc, o->srate);
 	}
 }
 
-static bool init_events(SSG_PreAlloc *restrict o) {
-	const SSG_Program *prg = o->prg;
+static bool init_events(SAU_PreAlloc *restrict o) {
+	const SAU_Program *prg = o->prg;
 	uint32_t vo_wait_time = 0;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *prg_e = prg->events[i];
-		EventNode *e = SSG_MemPool_alloc(o->mem, sizeof(EventNode));
+		const SAU_ProgramEvent *prg_e = prg->events[i];
+		EventNode *e = SAU_MemPool_alloc(o->mem, sizeof(EventNode));
 		if (!e)
 			return false;
 		uint16_t vo_id = prg_e->vo_id;
-		e->wait = SSG_MS_IN_SAMPLES(prg_e->wait_ms, o->srate);
+		e->wait = SAU_MS_IN_SAMPLES(prg_e->wait_ms, o->srate);
 		vo_wait_time += e->wait;
 		e->prg_e = prg_e;
 		for (size_t i = 0; i < prg_e->op_data_count; ++i) {
-			const SSG_ProgramOpData *od = &prg_e->op_data[i];
+			const SAU_ProgramOpData *od = &prg_e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			/*
 			 * Apply linkage updates for use in init traversal.
@@ -129,9 +129,9 @@ static bool init_events(SSG_PreAlloc *restrict o) {
 			on->amods = od->amods;
 		}
 		if (prg_e->vo_data) {
-			const SSG_ProgramVoData *pvd = prg_e->vo_data;
+			const SAU_ProgramVoData *pvd = prg_e->vo_data;
 			uint32_t params = pvd->params;
-			if (params & SSG_PVOP_GRAPH) {
+			if (params & SAU_PVOP_GRAPH) {
 				if (!set_voice_graph(o, pvd, e))
 					return false;
 			}
@@ -148,7 +148,7 @@ static bool init_events(SSG_PreAlloc *restrict o) {
  *
  * \return true, unless invalid data detected
  */
-static bool check_validity(SSG_PreAlloc *restrict o) {
+static bool check_validity(SAU_PreAlloc *restrict o) {
 	bool error = false;
 	if (o->vg.nest_max > UINT8_MAX) {
 		fprintf(stderr,
@@ -159,32 +159,32 @@ static bool check_validity(SSG_PreAlloc *restrict o) {
 	return !error;
 }
 
-bool SSG_fill_PreAlloc(SSG_PreAlloc *restrict o,
-		const SSG_Program *restrict prg, uint32_t srate,
-		SSG_MemPool *restrict mem) {
+bool SAU_fill_PreAlloc(SAU_PreAlloc *restrict o,
+		const SAU_Program *restrict prg, uint32_t srate,
+		SAU_MemPool *restrict mem) {
 	size_t i;
 	bool error = false;
-	*o = (SSG_PreAlloc){};
+	*o = (SAU_PreAlloc){};
 	o->prg = prg;
 	o->srate = srate;
 	o->mem = mem;
 	i = prg->ev_count;
 	if (i > 0) {
-		o->events = SSG_MemPool_alloc(o->mem,
+		o->events = SAU_MemPool_alloc(o->mem,
 				i * sizeof(EventNode*));
 		if (!o->events) goto MEM_ERR;
 		o->ev_count = i;
 	}
 	i = prg->op_count;
 	if (i > 0) {
-		o->operators = SSG_MemPool_alloc(o->mem,
+		o->operators = SAU_MemPool_alloc(o->mem,
 				i * sizeof(OperatorNode));
 		if (!o->operators) goto MEM_ERR;
 		o->op_count = i;
 	}
 	i = prg->vo_count;
 	if (i > 0) {
-		o->voices = SSG_MemPool_alloc(o->mem,
+		o->voices = SAU_MemPool_alloc(o->mem,
 				i * sizeof(VoiceNode));
 		if (!o->voices) goto MEM_ERR;
 		o->vo_count = i;
@@ -198,9 +198,9 @@ bool SSG_fill_PreAlloc(SSG_PreAlloc *restrict o,
 	o->max_bufs = COUNT_BUFS(o->vg.nest_max);
 	if (false)
 	MEM_ERR: {
-		SSG_error("prealloc", "memory allocation failure");
+		SAU_error("prealloc", "memory allocation failure");
 		error = true;
 	}
-	SSG_OpRefArr_clear(&o->vg.vo_graph);
+	SAU_OpRefArr_clear(&o->vg.vo_graph);
 	return !error;
 }

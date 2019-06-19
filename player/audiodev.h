@@ -1,4 +1,4 @@
-/* ssndgen: System audio output support module.
+/* saugns: System audio output support module.
  * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,13 +18,13 @@
 #pragma once
 #include "../common.h"
 
-struct SSG_AudioDev;
-typedef struct SSG_AudioDev SSG_AudioDev;
+struct SAU_AudioDev;
+typedef struct SAU_AudioDev SAU_AudioDev;
 
-SSG_AudioDev *SSG_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-		SSG__malloclike;
-void SSG_close_AudioDev(SSG_AudioDev *restrict o);
+SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
+		SAU__malloclike;
+void SAU_close_AudioDev(SAU_AudioDev *restrict o);
 
-uint32_t SSG_AudioDev_get_srate(const SSG_AudioDev *restrict o);
-bool SSG_AudioDev_write(SSG_AudioDev *restrict o,
+uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o);
+bool SAU_AudioDev_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples);

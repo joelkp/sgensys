@@ -1,4 +1,4 @@
-/* ssndgen: Script file data and functions.
+/* saugns: Script file data and functions.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,62 +18,62 @@
 /**
  * Points to bounding members of a linearly ordered list of nodes.
  */
-typedef struct SSG_NodeRange {
+typedef struct SAU_NodeRange {
 	void *first, *last;
-} SSG_NodeRange;
+} SAU_NodeRange;
 
 /**
  * Script data operator flags.
  */
 enum {
-	SSG_SDOP_ADD_CARRIER = 1<<0,
+	SAU_SDOP_ADD_CARRIER = 1<<0,
 };
 
 /**
  * Node type for operator data.
  */
-typedef struct SSG_ScriptOpData {
-	struct SSG_ScriptOpData *range_next;
-	struct SSG_ScriptEvData *event;
-	struct SSG_ScriptOpData *next_bound;
-	struct SSG_ScriptOpData *prev_use, *next_use; /* for same op(s) */
+typedef struct SAU_ScriptOpData {
+	struct SAU_ScriptOpData *range_next;
+	struct SAU_ScriptEvData *event;
+	struct SAU_ScriptOpData *next_bound;
+	struct SAU_ScriptOpData *prev_use, *next_use; /* for same op(s) */
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id; // for scriptconv
 	uint32_t op_params;
-	SSG_Time time;
+	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
-	SSG_Ramp freq, freq2;
-	SSG_Ramp amp, amp2;
+	SAU_Ramp freq, freq2;
+	SAU_Ramp amp, amp2;
 	float phase;
 	/* new node adjacents in operator linkage graph */
-	SSG_RefList *mod_lists;
-} SSG_ScriptOpData;
+	SAU_RefList *mod_lists;
+} SAU_ScriptOpData;
 
 /**
  * Script data event flags.
  */
 enum {
-	SSG_SDEV_NEW_OPGRAPH = 1<<0,
+	SAU_SDEV_NEW_OPGRAPH = 1<<0,
 };
 
 /**
  * Node type for event data. Includes any voice and operator data part
  * of the event.
  */
-typedef struct SSG_ScriptEvData {
-	struct SSG_ScriptEvData *next;
+typedef struct SAU_ScriptEvData {
+	struct SAU_ScriptEvData *next;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_NodeRange op_all;
+	SAU_NodeRange op_all;
 	/* voice parameters */
 	uint32_t vo_id;
 	uint32_t vo_params;
-	struct SSG_ScriptEvData *prev_vo_use, *next_vo_use; /* for same voice */
-	SSG_Ramp pan;
-	SSG_RefList *carriers;
-} SSG_ScriptEvData;
+	struct SAU_ScriptEvData *prev_vo_use, *next_vo_use; /* for same voice */
+	SAU_Ramp pan;
+	SAU_RefList *carriers;
+} SAU_ScriptEvData;
 
 /**
  * Script data option flags.
@@ -81,12 +81,12 @@ typedef struct SSG_ScriptEvData {
  * Set after parsing the setting of script options in a script.
  */
 enum {
-	SSG_SOPT_AMPMULT = 1<<0,
-	SSG_SOPT_A4_FREQ = 1<<1,
-	SSG_SOPT_DEF_TIME = 1<<2,
-	SSG_SOPT_DEF_FREQ = 1<<3,
-	SSG_SOPT_DEF_RELFREQ = 1<<4,
-	SSG_SOPT_DEF_CHANMIX = 1<<5,
+	SAU_SOPT_AMPMULT = 1<<0,
+	SAU_SOPT_A4_FREQ = 1<<1,
+	SAU_SOPT_DEF_TIME = 1<<2,
+	SAU_SOPT_DEF_FREQ = 1<<3,
+	SAU_SOPT_DEF_RELFREQ = 1<<4,
+	SAU_SOPT_DEF_CHANMIX = 1<<5,
 };
 
 /**
@@ -94,8 +94,8 @@ enum {
  *
  * The final state is included in the parse result.
  */
-typedef struct SSG_ScriptOptions {
-	uint32_t changed; // flags (SSG_SOPT_*) set upon change by script
+typedef struct SAU_ScriptOptions {
+	uint32_t changed; // flags (SAU_SOPT_*) set upon change by script
 	float ampmult;    // amplitude multiplier for non-modulator operators
 	float A4_freq;    // A4 tuning for frequency as note
 	/* operator parameter default values (use depends on context) */
@@ -103,19 +103,19 @@ typedef struct SSG_ScriptOptions {
 	float def_freq,
 	      def_relfreq,
 	      def_chanmix;
-} SSG_ScriptOptions;
+} SAU_ScriptOptions;
 
-struct SSG_MemPool;
+struct SAU_MemPool;
 
 /**
  * Type returned after processing a file.
  */
-typedef struct SSG_Script {
-	SSG_ScriptEvData *events;
+typedef struct SAU_Script {
+	SAU_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
-	SSG_ScriptOptions sopt;
-	struct SSG_MemPool *mem; // internally used, provided until destroy
-} SSG_Script;
+	SAU_ScriptOptions sopt;
+	struct SAU_MemPool *mem; // internally used, provided until destroy
+} SAU_Script;
 
-SSG_Script *SSG_load_Script(const char *restrict script_arg, bool is_path);
-void SSG_discard_Script(SSG_Script *restrict o);
+SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path);
+void SAU_discard_Script(SAU_Script *restrict o);

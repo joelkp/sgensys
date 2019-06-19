@@ -1,4 +1,4 @@
-/* ssndgen: Reference item list module.
+/* saugns: Reference item list module.
  * Copyright (c) 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,9 +25,9 @@
  *
  * \return instance, or NULL on allocation failure
  */
-SSG_RefList *SSG_create_RefList(int list_type,
-		SSG_MemPool *restrict mem) {
-	SSG_RefList *o = SSG_MemPool_alloc(mem, sizeof(SSG_RefList));
+SAU_RefList *SAU_create_RefList(int list_type,
+		SAU_MemPool *restrict mem) {
+	SAU_RefList *o = SAU_MemPool_alloc(mem, sizeof(SAU_RefList));
 	if (!o)
 		return NULL;
 	o->list_type = list_type;
@@ -43,15 +43,15 @@ SSG_RefList *SSG_create_RefList(int list_type,
  *
  * \return true, or false on allocation failure
  */
-bool SSG_copy_RefList(SSG_RefList **restrict dstp,
-		const SSG_RefList *restrict src,
-		SSG_MemPool *restrict mem) {
+bool SAU_copy_RefList(SAU_RefList **restrict dstp,
+		const SAU_RefList *restrict src,
+		SAU_MemPool *restrict mem) {
 	if (!src) {
 		*dstp = NULL;
 		return true;
 	}
 	if (!*dstp) {
-		*dstp = SSG_MemPool_memdup(mem, src, sizeof(SSG_RefList));
+		*dstp = SAU_MemPool_memdup(mem, src, sizeof(SAU_RefList));
 		if (!*dstp)
 			return false;
 	}
@@ -70,23 +70,23 @@ bool SSG_copy_RefList(SSG_RefList **restrict dstp,
  *
  * \return true, or false on allocation failure
  */
-bool SSG_RefList_unshallow(SSG_RefList *restrict o,
-		const SSG_RefItem *restrict src_end,
-		SSG_MemPool *restrict mem) {
+bool SAU_RefList_unshallow(SAU_RefList *restrict o,
+		const SAU_RefItem *restrict src_end,
+		SAU_MemPool *restrict mem) {
 	if (!(o->flags & RL_SHALLOW))
 		return true;
-	SSG_RefItem *first_ref = NULL;
+	SAU_RefItem *first_ref = NULL;
 	size_t ref_count = 0;
 	if (!o->refs || o->refs == src_end) goto DONE;
-	first_ref = SSG_MemPool_memdup(mem, o->refs, sizeof(SSG_RefItem));
+	first_ref = SAU_MemPool_memdup(mem, o->refs, sizeof(SAU_RefItem));
 	if (!first_ref)
 		return false;
 	++ref_count;
-	SSG_RefItem *last_ref = first_ref;
-	for (SSG_RefItem *src_ref = first_ref->next;
+	SAU_RefItem *last_ref = first_ref;
+	for (SAU_RefItem *src_ref = first_ref->next;
 			src_ref != src_end; src_ref = src_ref->next) {
-		SSG_RefItem *dst_ref = SSG_MemPool_memdup(mem,
-				src_ref, sizeof(SSG_RefItem));
+		SAU_RefItem *dst_ref = SAU_MemPool_memdup(mem,
+				src_ref, sizeof(SAU_RefItem));
 		if (!dst_ref)
 			return false;
 		last_ref->next = dst_ref;
@@ -108,10 +108,10 @@ DONE:
  *
  * \return instance, or NULL on allocation failure
  */
-SSG_RefItem *SSG_RefList_add(SSG_RefList *restrict o,
+SAU_RefItem *SAU_RefList_add(SAU_RefList *restrict o,
 		void *restrict data, int ref_type,
-		SSG_MemPool *restrict mem) {
-	SSG_RefItem *ref = SSG_MemPool_alloc(mem, sizeof(SSG_RefItem));
+		SAU_MemPool *restrict mem) {
+	SAU_RefItem *ref = SAU_MemPool_alloc(mem, sizeof(SAU_RefItem));
 	if (!ref)
 		return NULL;
 	ref->data = data;
@@ -119,7 +119,7 @@ SSG_RefItem *SSG_RefList_add(SSG_RefList *restrict o,
 		o->refs = ref;
 	} else {
 		if (o->flags & RL_SHALLOW) {
-			if (!SSG_RefList_unshallow(o, NULL, mem))
+			if (!SAU_RefList_unshallow(o, NULL, mem))
 				return NULL;
 		}
 		o->last_ref->next = ref;
@@ -137,14 +137,14 @@ SSG_RefItem *SSG_RefList_add(SSG_RefList *restrict o,
  *
  * \return true, or false on allocation failure
  */
-bool SSG_RefList_drop(SSG_RefList *restrict o,
-		SSG_MemPool *restrict mem) {
+bool SAU_RefList_drop(SAU_RefList *restrict o,
+		SAU_MemPool *restrict mem) {
 	if (o->flags & RL_SHALLOW)
-		return SSG_RefList_unshallow(o, o->last_ref, mem);
+		return SAU_RefList_unshallow(o, o->last_ref, mem);
 	if (!o->refs)
 		return true;
 	if (!o->refs->next) {
-		SSG_RefList_clear(o);
+		SAU_RefList_clear(o);
 		return true;
 	}
 	o->last_ref = o->last_ref->prev;
@@ -157,7 +157,7 @@ bool SSG_RefList_drop(SSG_RefList *restrict o,
  * Remove reference items from the list,
  * leaving fields \a next and \a list_type in place.
  */
-void SSG_RefList_clear(SSG_RefList *restrict o) {
+void SAU_RefList_clear(SAU_RefList *restrict o) {
 	o->refs = NULL;
 	o->last_ref = NULL;
 	o->ref_count = 0;

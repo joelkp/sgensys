@@ -1,4 +1,4 @@
-/* ssndgen: Reference item list module.
+/* saugns: Reference item list module.
  * Copyright (c) 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,13 +25,13 @@
  * to indicate something about \a data held
  * or what is to be done with it.
  */
-typedef struct SSG_RefItem {
-	struct SSG_RefItem *next, *prev;
+typedef struct SAU_RefItem {
+	struct SAU_RefItem *next, *prev;
 	void *data;
 	void *meta_data; // manually set, kept in copies
 	int ref_type;  // user-defined values
 	int list_type; // copied from list
-} SSG_RefItem;
+} SAU_RefItem;
 
 /**
  * List of "reference" items, in turn also forward-linked.
@@ -39,29 +39,29 @@ typedef struct SSG_RefItem {
  * The \a list_type field can hold any value
  * to differentiate between lists.
  */
-typedef struct SSG_RefList {
-	SSG_RefItem *refs;
-	SSG_RefItem *last_ref;
-	struct SSG_RefList *next; // manually set, kept in copies
+typedef struct SAU_RefList {
+	SAU_RefItem *refs;
+	SAU_RefItem *last_ref;
+	struct SAU_RefList *next; // manually set, kept in copies
 	size_t ref_count; // maintained by functions
 	int list_type;    // user-defined values
 	int flags;
-} SSG_RefList;
+} SAU_RefList;
 
-struct SSG_MemPool;
+struct SAU_MemPool;
 
-SSG_RefList *SSG_create_RefList(int list_type,
-		struct SSG_MemPool *restrict mem) SSG__malloclike;
-bool SSG_copy_RefList(SSG_RefList **restrict dstp,
-		const SSG_RefList *restrict src,
-		struct SSG_MemPool *restrict mem);
+SAU_RefList *SAU_create_RefList(int list_type,
+		struct SAU_MemPool *restrict mem) SAU__malloclike;
+bool SAU_copy_RefList(SAU_RefList **restrict dstp,
+		const SAU_RefList *restrict src,
+		struct SAU_MemPool *restrict mem);
 
-bool SSG_RefList_unshallow(SSG_RefList *restrict o,
-		const SSG_RefItem *restrict src_end,
-		struct SSG_MemPool *restrict mem);
-SSG_RefItem *SSG_RefList_add(SSG_RefList *restrict o,
+bool SAU_RefList_unshallow(SAU_RefList *restrict o,
+		const SAU_RefItem *restrict src_end,
+		struct SAU_MemPool *restrict mem);
+SAU_RefItem *SAU_RefList_add(SAU_RefList *restrict o,
 		void *restrict data, int ref_type,
-		struct SSG_MemPool *restrict mem) SSG__malloclike;
-bool SSG_RefList_drop(SSG_RefList *restrict o,
-		struct SSG_MemPool *restrict mem);
-void SSG_RefList_clear(SSG_RefList *restrict o);
+		struct SAU_MemPool *restrict mem) SAU__malloclike;
+bool SAU_RefList_drop(SAU_RefList *restrict o,
+		struct SAU_MemPool *restrict mem);
+void SAU_RefList_clear(SAU_RefList *restrict o);

@@ -1,4 +1,4 @@
-/* ssndgen: OSS audio output support.
+/* saugns: OSS audio output support.
  * Copyright (c) 2011-2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -29,7 +29,7 @@
 /*
  * \return instance or NULL on failure
  */
-static inline SSG_AudioDev *open_oss(const char *restrict name, int mode,
+static inline SAU_AudioDev *open_oss(const char *restrict name, int mode,
 		uint16_t channels, uint32_t *restrict srate) {
 	const char *err_name = NULL;
 	int tmp, fd;
@@ -45,7 +45,7 @@ static inline SSG_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 	if (tmp != AFMT_S16_NE) {
-		SSG_error("OSS", "16-bit signed integer native endian format unsupported");
+		SAU_error("OSS", "16-bit signed integer native endian format unsupported");
 		goto ERROR;
 	}
 
@@ -55,7 +55,7 @@ static inline SSG_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 	if (tmp != channels) {
-		SSG_error("OSS", "%d channels unsupported",
+		SAU_error("OSS", "%d channels unsupported",
 			channels);
 		goto ERROR;
 	}
@@ -66,12 +66,12 @@ static inline SSG_AudioDev *open_oss(const char *restrict name, int mode,
 		goto ERROR;
 	}
 	if ((uint32_t) tmp != *srate) {
-		SSG_warning("OSS", "sample rate %d unsupported, using %d",
+		SAU_warning("OSS", "sample rate %d unsupported, using %d",
 			*srate, tmp);
 		*srate = tmp;
 	}
 
-	SSG_AudioDev *o = malloc(sizeof(SSG_AudioDev));
+	SAU_AudioDev *o = malloc(sizeof(SAU_AudioDev));
 	o->ref.fd = fd;
 	o->type = TYPE_OSS;
 	o->channels = channels;
@@ -80,10 +80,10 @@ static inline SSG_AudioDev *open_oss(const char *restrict name, int mode,
 
 ERROR:
 	if (err_name)
-		SSG_error("OSS", "%s: %s", err_name, strerror(errno));
+		SAU_error("OSS", "%s: %s", err_name, strerror(errno));
 	if (fd != -1)
 		close(fd);
-	SSG_error("OSS", "configuration for device \"%s\" failed",
+	SAU_error("OSS", "configuration for device \"%s\" failed",
 		name);
 	return NULL;
 }
@@ -92,7 +92,7 @@ ERROR:
  * Destroy instance. Close OSS device,
  * ending playback in the process.
  */
-static inline void close_oss(SSG_AudioDev *restrict o) {
+static inline void close_oss(SAU_AudioDev *restrict o) {
 	close(o->ref.fd);
 	free(o);
 }
@@ -102,7 +102,7 @@ static inline void close_oss(SSG_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool oss_write(SSG_AudioDev *restrict o,
+static inline bool oss_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	size_t length = samples * o->channels * SOUND_BYTES;
 	size_t written = write(o->ref.fd, buf, length);

@@ -1,4 +1,4 @@
-/* ssndgen: Linux audio output support.
+/* saugns: Linux audio output support.
  * Copyright (c) 2013, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -25,10 +25,10 @@
  *
  * \return instance or NULL on failure
  */
-static inline SSG_AudioDev *open_linux(const char *restrict alsa_name,
+static inline SAU_AudioDev *open_linux(const char *restrict alsa_name,
 		const char *restrict oss_name, int oss_mode,
 		uint16_t channels, uint32_t *restrict srate) {
-	SSG_AudioDev *o;
+	SAU_AudioDev *o;
 	uint32_t tmp;
 	int err;
 	snd_pcm_t *handle = NULL;
@@ -39,7 +39,7 @@ static inline SSG_AudioDev *open_linux(const char *restrict alsa_name,
 		o = open_oss(oss_name, oss_mode, channels, srate);
 		if (o != NULL)
 			return o;
-		SSG_error(NULL, "could neither use ALSA nor OSS");
+		SAU_error(NULL, "could neither use ALSA nor OSS");
 		goto ERROR;
 	}
 
@@ -59,12 +59,12 @@ static inline SSG_AudioDev *open_linux(const char *restrict alsa_name,
 			|| (err = snd_pcm_hw_params(handle, params)) < 0)
 		goto ERROR;
 	if (tmp != *srate) {
-		SSG_warning("ALSA", "sample rate %d unsupported, using %d",
+		SAU_warning("ALSA", "sample rate %d unsupported, using %d",
 				*srate, tmp);
 		*srate = tmp;
 	}
 
-	o = malloc(sizeof(SSG_AudioDev));
+	o = malloc(sizeof(SAU_AudioDev));
 	o->ref.handle = handle;
 	o->type = TYPE_ALSA;
 	o->channels = channels;
@@ -72,10 +72,10 @@ static inline SSG_AudioDev *open_linux(const char *restrict alsa_name,
 	return o;
 
 ERROR:
-	SSG_error("ALSA", "%s", snd_strerror(err));
+	SAU_error("ALSA", "%s", snd_strerror(err));
 	if (handle) snd_pcm_close(handle);
 	if (params) snd_pcm_hw_params_free(params);
-	SSG_error("ALSA", "configuration for device \"%s\" failed", alsa_name);
+	SAU_error("ALSA", "configuration for device \"%s\" failed", alsa_name);
 	return NULL;
 }
 
@@ -83,7 +83,7 @@ ERROR:
  * Destroy instance. Close ALSA or OSS device,
  * ending playback in the process.
  */
-static inline void close_linux(SSG_AudioDev *restrict o) {
+static inline void close_linux(SAU_AudioDev *restrict o) {
 	if (o->type == TYPE_OSS) {
 		close_oss(o);
 		return;
@@ -99,7 +99,7 @@ static inline void close_linux(SSG_AudioDev *restrict o) {
  *
  * \return true if write sucessful, otherwise false
  */
-static inline bool linux_write(SSG_AudioDev *restrict o,
+static inline bool linux_write(SAU_AudioDev *restrict o,
 		const int16_t *restrict buf, uint32_t samples) {
 	if (o->type == TYPE_OSS) {
 		return oss_write(o, buf, samples);
@@ -108,10 +108,10 @@ static inline bool linux_write(SSG_AudioDev *restrict o,
 	snd_pcm_sframes_t written;
 	while ((written = snd_pcm_writei(o->ref.handle, buf, samples)) < 0) {
 		if (written == -EPIPE) {
-			SSG_warning("ALSA", "audio device buffer underrun");
+			SAU_warning("ALSA", "audio device buffer underrun");
 			snd_pcm_prepare(o->ref.handle);
 		} else {
-			SSG_warning("ALSA", "%s", snd_strerror(written));
+			SAU_warning("ALSA", "%s", snd_strerror(written));
 			break;
 		}
 	}

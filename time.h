@@ -1,4 +1,4 @@
-/* ssndgen: Time parameter module.
+/* saugns: Time parameter module.
  * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -23,21 +23,21 @@
  *
  * Holds data for a generic time parameter.
  */
-typedef struct SSG_Time {
+typedef struct SAU_Time {
 	uint32_t v_ms;
 	uint8_t flags;
-} SSG_Time;
+} SAU_Time;
 
 /**
  * Time parameter flags.
  */
 enum {
-	SSG_TIMEP_SET    = 1<<0, // the \a time_ms value is to be used
-	SSG_TIMEP_LINKED = 1<<1, // a linked/"infinite" value is to be used
+	SAU_TIMEP_SET    = 1<<0, // the \a time_ms value is to be used
+	SAU_TIMEP_LINKED = 1<<1, // a linked/"infinite" value is to be used
 };
 
 /**
  * Convert time in ms to time in samples for a sample rate.
  */
-#define SSG_MS_IN_SAMPLES(ms, srate) \
+#define SAU_MS_IN_SAMPLES(ms, srate) \
 	lrintf(((ms) * .001f) * (srate))

@@ -1,4 +1,4 @@
-/* ssndgen: Pointer array module.
+/* saugns: Pointer array module.
  * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -27,7 +27,7 @@
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrArr_add(SSG_PtrArr *restrict o, void *restrict item) {
+bool SAU_PtrArr_add(SAU_PtrArr *restrict o, void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (void**) item;
@@ -72,7 +72,7 @@ bool SSG_PtrArr_add(SSG_PtrArr *restrict o, void *restrict item) {
 /**
  * Clear the given array.
  */
-void SSG_PtrArr_clear(SSG_PtrArr *restrict o) {
+void SAU_PtrArr_clear(SAU_PtrArr *restrict o) {
 	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
@@ -92,14 +92,14 @@ void SSG_PtrArr_clear(SSG_PtrArr *restrict o) {
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrArr_memdup(SSG_PtrArr *restrict o, void ***restrict dst) {
+bool SAU_PtrArr_memdup(SAU_PtrArr *restrict o, void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SSG_PtrArr_ITEMS(o);
-	void **a = SSG_memdup(src, size);
+	void **src = SAU_PtrArr_ITEMS(o);
+	void **a = SAU_memdup(src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -117,15 +117,15 @@ bool SSG_PtrArr_memdup(SSG_PtrArr *restrict o, void ***restrict dst) {
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrArr_mpmemdup(SSG_PtrArr *restrict o, void ***restrict dst,
-		SSG_MemPool *restrict mempool) {
+bool SAU_PtrArr_mpmemdup(SAU_PtrArr *restrict o, void ***restrict dst,
+		SAU_MemPool *restrict mempool) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SSG_PtrArr_ITEMS(o);
-	void **a = SSG_MemPool_memdup(mempool, src, size);
+	void **src = SAU_PtrArr_ITEMS(o);
+	void **a = SAU_MemPool_memdup(mempool, src, size);
 	if (!a)
 		return false;
 	*dst = a;
@@ -147,9 +147,9 @@ bool SSG_PtrArr_mpmemdup(SSG_PtrArr *restrict o, void ***restrict dst,
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void SSG_PtrArr_soft_copy(SSG_PtrArr *restrict dst,
-		const SSG_PtrArr *restrict src) {
-	SSG_PtrArr_clear(dst);
+void SAU_PtrArr_soft_copy(SAU_PtrArr *restrict dst,
+		const SAU_PtrArr *restrict src) {
+	SAU_PtrArr_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;

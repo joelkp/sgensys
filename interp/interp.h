@@ -1,4 +1,4 @@
-/* ssndgen: Audio program interpreter module.
+/* saugns: Audio program interpreter module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,14 +14,14 @@
 #pragma once
 #include "../program.h"
 
-struct SSG_Interp;
-typedef struct SSG_Interp SSG_Interp;
+struct SAU_Interp;
+typedef struct SAU_Interp SAU_Interp;
 
-SSG_Interp *SSG_create_Interp(const SSG_Program *restrict prg,
-		uint32_t srate) SSG__malloclike;
-void SSG_destroy_Interp(SSG_Interp *restrict o);
+SAU_Interp *SAU_create_Interp(const SAU_Program *restrict prg,
+		uint32_t srate) SAU__malloclike;
+void SAU_destroy_Interp(SAU_Interp *restrict o);
 
-size_t SSG_Interp_run(SSG_Interp *restrict o,
+size_t SAU_Interp_run(SAU_Interp *restrict o,
 		int16_t *restrict buf, size_t buf_len);
 
-void SSG_Interp_print(const SSG_Interp *restrict o);
+void SAU_Interp_print(const SAU_Interp *restrict o);

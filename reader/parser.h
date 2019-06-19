@@ -1,4 +1,4 @@
-/* ssndgen: Parser output data and functions.
+/* saugns: Parser output data and functions.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,11 +19,11 @@
 /**
  * Linked list of node ranges each for a parse data sublist.
  */
-typedef struct SSG_ParseSublist {
-	SSG_NodeRange range;
-	struct SSG_ParseSublist *next;
+typedef struct SAU_ParseSublist {
+	SAU_NodeRange range;
+	struct SAU_ParseSublist *next;
 	uint8_t use_type;
-} SSG_ParseSublist;
+} SAU_ParseSublist;
 
 /**
  * Linked list of duration groupings of nodes.
@@ -32,85 +32,85 @@ typedef struct SSG_ParseSublist {
  * used to calculate duration and default time
  * for that piece of the script.
  */
-typedef struct SSG_ParseDurGroup {
-	SSG_NodeRange range;
-	struct SSG_ParseDurGroup *next;
-} SSG_ParseDurGroup;
+typedef struct SAU_ParseDurGroup {
+	SAU_NodeRange range;
+	struct SAU_ParseDurGroup *next;
+} SAU_ParseDurGroup;
 
 /**
  * Parse data operator flags.
  */
 enum {
-	SSG_PDOP_MULTIPLE = 1<<0,
-	SSG_PDOP_NESTED = 1<<1,
-	SSG_PDOP_SILENCE_ADDED = 1<<2,
-	SSG_PDOP_HAS_COMPOSITE = 1<<3,
-	SSG_PDOP_IGNORED = 1<<4, // node skipped by parseconv
+	SAU_PDOP_MULTIPLE = 1<<0,
+	SAU_PDOP_NESTED = 1<<1,
+	SAU_PDOP_SILENCE_ADDED = 1<<2,
+	SAU_PDOP_HAS_COMPOSITE = 1<<3,
+	SAU_PDOP_IGNORED = 1<<4, // node skipped by parseconv
 };
 
 /**
  * Node type for operator data.
  */
-typedef struct SSG_ParseOpData {
-	struct SSG_ParseOpData *range_next;
-	struct SSG_ParseEvData *event;
-	struct SSG_ParseOpData *prev; /* preceding for same op(s) */
-	SSG_ParseSublist *nest_scopes;
-	SSG_ParseSublist *last_nest_scope;
-	struct SSG_ParseOpData *next_bound;
-	SSG_SymStr *label;
+typedef struct SAU_ParseOpData {
+	struct SAU_ParseOpData *range_next;
+	struct SAU_ParseEvData *event;
+	struct SAU_ParseOpData *prev; /* preceding for same op(s) */
+	SAU_ParseSublist *nest_scopes;
+	SAU_ParseSublist *last_nest_scope;
+	struct SAU_ParseOpData *next_bound;
+	SAU_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_params;
-	SSG_Time time;
+	SAU_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
 	uint8_t use_type;
-	SSG_Ramp freq, freq2;
-	SSG_Ramp amp, amp2;
+	SAU_Ramp freq, freq2;
+	SAU_Ramp amp, amp2;
 	float phase;
 	/* for parseconv */
 	void *op_conv;
 	void *op_context;
-} SSG_ParseOpData;
+} SAU_ParseOpData;
 
 /**
  * Parse data event flags.
  */
 enum {
-	SSG_PDEV_ADD_WAIT_DURATION = 1<<0,
+	SAU_PDEV_ADD_WAIT_DURATION = 1<<0,
 };
 
 /**
  * Node type for event data. Includes any voice and operator data part
  * of the event.
  */
-typedef struct SSG_ParseEvData {
-	struct SSG_ParseEvData *next;
-	struct SSG_ParseEvData *composite;
-	SSG_ParseDurGroup *dur;
+typedef struct SAU_ParseEvData {
+	struct SAU_ParseEvData *next;
+	struct SAU_ParseEvData *composite;
+	SAU_ParseDurGroup *dur;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_NodeRange operators; /* operator nodes directly linked from event */
+	SAU_NodeRange operators; /* operator nodes directly linked from event */
 	/* voice parameters */
 	uint32_t vo_params;
-	struct SSG_ParseEvData *vo_prev; /* preceding event for same voice */
-	SSG_Ramp pan;
+	struct SAU_ParseEvData *vo_prev; /* preceding event for same voice */
+	SAU_Ramp pan;
 	/* for parseconv */
 	void *ev_conv;
 	void *vo_context;
-} SSG_ParseEvData;
+} SAU_ParseEvData;
 
 /**
  * Type returned after processing a file.
  */
-typedef struct SSG_Parse {
-	SSG_ParseEvData *events;
+typedef struct SAU_Parse {
+	SAU_ParseEvData *events;
 	const char *name; // currently simply set to the filename
-	SSG_ScriptOptions sopt;
-	SSG_SymTab *symtab;
-	SSG_MemPool *mem; // internally used, provided until destroy
-} SSG_Parse;
+	SAU_ScriptOptions sopt;
+	SAU_SymTab *symtab;
+	SAU_MemPool *mem; // internally used, provided until destroy
+} SAU_Parse;
 
-SSG_Parse *SSG_create_Parse(const char *restrict script_arg, bool is_path);
-void SSG_destroy_Parse(SSG_Parse *restrict o);
+SAU_Parse *SAU_create_Parse(const char *restrict script_arg, bool is_path);
+void SAU_destroy_Parse(SAU_Parse *restrict o);

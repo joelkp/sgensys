@@ -1,4 +1,4 @@
-/* ssndgen: Wave module.
+/* saugns: Wave module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,57 +18,57 @@
 #pragma once
 #include "common.h"
 
-#define SSG_Wave_LENBITS 11
-#define SSG_Wave_LEN     (1<<SSG_Wave_LENBITS) /* 2048 */
-#define SSG_Wave_LENMASK (SSG_Wave_LEN - 1)
+#define SAU_Wave_LENBITS 11
+#define SAU_Wave_LEN     (1<<SAU_Wave_LENBITS) /* 2048 */
+#define SAU_Wave_LENMASK (SAU_Wave_LEN - 1)
 
-#define SSG_Wave_MAXVAL 1.f
-#define SSG_Wave_MINVAL (-SSG_Wave_MAXVAL)
+#define SAU_Wave_MAXVAL 1.f
+#define SAU_Wave_MINVAL (-SAU_Wave_MAXVAL)
 
-#define SSG_Wave_SCALEBITS (32-SSG_Wave_LENBITS)
-#define SSG_Wave_SCALE     (1<<SSG_Wave_SCALEBITS)
-#define SSG_Wave_SCALEMASK (SSG_Wave_SCALE - 1)
+#define SAU_Wave_SCALEBITS (32-SAU_Wave_LENBITS)
+#define SAU_Wave_SCALE     (1<<SAU_Wave_SCALEBITS)
+#define SAU_Wave_SCALEMASK (SAU_Wave_SCALE - 1)
 
 /**
  * Wave types.
  */
 enum {
-	SSG_WAVE_SIN = 0,
-	SSG_WAVE_SQR,
-	SSG_WAVE_TRI,
-	SSG_WAVE_SAW,
-	SSG_WAVE_SHA,
-	SSG_WAVE_SZH,
-	SSG_WAVE_SSR,
-	SSG_WAVE_TYPES
+	SAU_WAVE_SIN = 0,
+	SAU_WAVE_SQR,
+	SAU_WAVE_TRI,
+	SAU_WAVE_SAW,
+	SAU_WAVE_SHA,
+	SAU_WAVE_SZH,
+	SAU_WAVE_SSR,
+	SAU_WAVE_TYPES
 };
 
 /** LUTs for wave types. */
-extern float SSG_Wave_luts[SSG_WAVE_TYPES][SSG_Wave_LEN];
+extern float SAU_Wave_luts[SAU_WAVE_TYPES][SAU_Wave_LEN];
 
 /** Names of wave types, with an extra NULL pointer at the end. */
-extern const char *const SSG_Wave_names[SSG_WAVE_TYPES + 1];
+extern const char *const SAU_Wave_names[SAU_WAVE_TYPES + 1];
 
 /**
  * Turn 32-bit unsigned phase value into LUT index.
  */
-#define SSG_Wave_INDEX(phase) \
-	(((uint32_t)(phase)) >> SSG_Wave_SCALEBITS)
+#define SAU_Wave_INDEX(phase) \
+	(((uint32_t)(phase)) >> SAU_Wave_SCALEBITS)
 
 /**
  * Get LUT value for 32-bit unsigned phase using linear interpolation.
  *
  * \return sample
  */
-static inline float SSG_Wave_get_lerp(const float *restrict lut,
+static inline float SAU_Wave_get_lerp(const float *restrict lut,
 		uint32_t phase) {
-	uint32_t ind = SSG_Wave_INDEX(phase);
+	uint32_t ind = SAU_Wave_INDEX(phase);
 	float s = lut[ind];
-	s += (lut[(ind + 1) & SSG_Wave_LENMASK] - s) *
-		((phase & SSG_Wave_SCALEMASK) * (1.f / SSG_Wave_SCALE));
+	s += (lut[(ind + 1) & SAU_Wave_LENMASK] - s) *
+		((phase & SAU_Wave_SCALEMASK) * (1.f / SAU_Wave_SCALE));
 	return s;
 }
 
-void SSG_global_init_Wave(void);
+void SAU_global_init_Wave(void);
 
-void SSG_Wave_print(uint8_t id);
+void SAU_Wave_print(uint8_t id);

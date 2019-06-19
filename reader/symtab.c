@@ -1,4 +1,4 @@
-/* ssndgen: Symbol table module.
+/* saugns: Symbol table module.
  * Copyright (c) 2011-2012, 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -17,19 +17,19 @@
 
 #define STRTAB_ALLOC_INITIAL 1024
 
-#ifndef SSG_SYMTAB_STATS
+#ifndef SAU_SYMTAB_STATS
 /*
  * Print symbol table statistics for testing?
  */
-# define SSG_SYMTAB_STATS 0
+# define SAU_SYMTAB_STATS 0
 #endif
-#if SSG_SYMTAB_STATS
+#if SAU_SYMTAB_STATS
 static size_t collision_count = 0;
 #include <stdio.h>
 #endif
 
 typedef struct StrTab {
-	SSG_SymStr **items;
+	SAU_SymStr **items;
 	size_t count;
 	size_t alloc;
 } StrTab;
@@ -66,13 +66,13 @@ static size_t StrTab_hash_key(StrTab *restrict o,
  * \return true, or false on allocation failure
  */
 static bool StrTab_upsize(StrTab *restrict o) {
-	SSG_SymStr **items, **old_items = o->items;
+	SAU_SymStr **items, **old_items = o->items;
 	size_t alloc, old_alloc = o->alloc;
 	size_t i;
 	alloc = (old_alloc > 0) ?
 		(old_alloc << 1) :
 		STRTAB_ALLOC_INITIAL;
-	items = calloc(alloc, sizeof(SSG_SymStr*));
+	items = calloc(alloc, sizeof(SAU_SymStr*));
 	if (!items)
 		return false;
 	o->alloc = alloc;
@@ -82,9 +82,9 @@ static bool StrTab_upsize(StrTab *restrict o) {
 	 * Rehash entries
 	 */
 	for (i = 0; i < old_alloc; ++i) {
-		SSG_SymStr *item = old_items[i];
+		SAU_SymStr *item = old_items[i];
 		while (item != NULL) {
-			SSG_SymStr *prev_item;
+			SAU_SymStr *prev_item;
 			size_t hash;
 			hash = StrTab_hash_key(o, item->key, item->key_len);
 			/*
@@ -111,10 +111,10 @@ static bool StrTab_upsize(StrTab *restrict o) {
  *
  * Initializes the hash table if empty.
  *
- * \return SSG_SymStr, or NULL on allocation failure
+ * \return SAU_SymStr, or NULL on allocation failure
  */
-static SSG_SymStr *StrTab_unique_item(StrTab *restrict o,
-		SSG_MemPool *restrict memp,
+static SAU_SymStr *StrTab_unique_item(StrTab *restrict o,
+		SAU_MemPool *restrict memp,
 		const void *restrict key, size_t len, size_t extra) {
 	if (!key || len == 0)
 		return NULL;
@@ -124,16 +124,16 @@ static SSG_SymStr *StrTab_unique_item(StrTab *restrict o,
 	}
 
 	size_t hash = StrTab_hash_key(o, key, len);
-	SSG_SymStr *item = o->items[hash];
+	SAU_SymStr *item = o->items[hash];
 	while (item != NULL) {
 		if (item->key_len == len &&
 			!memcmp(item->key, key, len)) return item;
 		item = item->prev;
-#if SSG_SYMTAB_STATS
+#if SAU_SYMTAB_STATS
 		++collision_count;
 #endif
 	}
-	item = SSG_MemPool_alloc(memp, sizeof(SSG_SymStr) + (len + extra));
+	item = SAU_MemPool_alloc(memp, sizeof(SAU_SymStr) + (len + extra));
 	if (!item)
 		return NULL;
 	item->prev = o->items[hash];
@@ -144,8 +144,8 @@ static SSG_SymStr *StrTab_unique_item(StrTab *restrict o,
 	return item;
 }
 
-struct SSG_SymTab {
-	SSG_MemPool *memp;
+struct SAU_SymTab {
+	SAU_MemPool *memp;
 	StrTab strtab;
 };
 
@@ -154,10 +154,10 @@ struct SSG_SymTab {
  *
  * \return instance, or NULL on allocation failure
  */
-SSG_SymTab *SSG_create_SymTab(SSG_MemPool *restrict mempool) {
+SAU_SymTab *SAU_create_SymTab(SAU_MemPool *restrict mempool) {
 	if (!mempool)
 		return NULL;
-	SSG_SymTab *o = calloc(1, sizeof(SSG_SymTab));
+	SAU_SymTab *o = calloc(1, sizeof(SAU_SymTab));
 	if (!o)
 		return NULL;
 	o->memp = mempool;
@@ -167,10 +167,10 @@ SSG_SymTab *SSG_create_SymTab(SSG_MemPool *restrict mempool) {
 /**
  * Destroy instance.
  */
-void SSG_destroy_SymTab(SSG_SymTab *restrict o) {
+void SAU_destroy_SymTab(SAU_SymTab *restrict o) {
 	if (!o)
 		return;
-#if SSG_SYMTAB_STATS
+#if SAU_SYMTAB_STATS
 	printf("collision count: %zd\n", collision_count);
 #endif
 	fini_StrTab(&o->strtab);
@@ -182,7 +182,7 @@ void SSG_destroy_SymTab(SSG_SymTab *restrict o) {
  *
  * \return unique item for \p str, or NULL on allocation failure
  */
-SSG_SymStr *SSG_SymTab_get_symstr(SSG_SymTab *restrict o,
+SAU_SymStr *SAU_SymTab_get_symstr(SAU_SymTab *restrict o,
 		const void *restrict str, size_t len) {
 	return StrTab_unique_item(&o->strtab, o->memp, str, len, 1);
 }
@@ -198,15 +198,15 @@ SSG_SymStr *SSG_SymTab_get_symstr(SSG_SymTab *restrict o,
  *
  * \return array of pointers to unique strings, or NULL on allocation failure
  */
-const char **SSG_SymTab_pool_stra(SSG_SymTab *restrict o,
+const char **SAU_SymTab_pool_stra(SAU_SymTab *restrict o,
 		const char *const*restrict stra,
 		size_t n) {
 	const char **res_stra;
-	res_stra = SSG_MemPool_alloc(o->memp, sizeof(const char*) * (n + 1));
+	res_stra = SAU_MemPool_alloc(o->memp, sizeof(const char*) * (n + 1));
 	if (!res_stra)
 		return NULL;
 	for (size_t i = 0; i < n; ++i) {
-		const char *str = SSG_SymTab_pool_str(o,
+		const char *str = SAU_SymTab_pool_str(o,
 				stra[i], strlen(stra[i]));
 		if (!str)
 			return NULL;

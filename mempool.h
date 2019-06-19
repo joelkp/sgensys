@@ -1,4 +1,4 @@
-/* ssndgen: Memory pool module.
+/* saugns: Memory pool module.
  * Copyright (c) 2014, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -18,12 +18,12 @@
 #pragma once
 #include "common.h"
 
-struct SSG_MemPool;
-typedef struct SSG_MemPool SSG_MemPool;
+struct SAU_MemPool;
+typedef struct SAU_MemPool SAU_MemPool;
 
-SSG_MemPool *SSG_create_MemPool(size_t block_size) SSG__malloclike;
-void SSG_destroy_MemPool(SSG_MemPool *restrict o);
+SAU_MemPool *SAU_create_MemPool(size_t block_size) SAU__malloclike;
+void SAU_destroy_MemPool(SAU_MemPool *restrict o);
 
-void *SSG_MemPool_alloc(SSG_MemPool *restrict o, size_t size) SSG__malloclike;
-void *SSG_MemPool_memdup(SSG_MemPool *restrict o,
-		const void *restrict src, size_t size) SSG__malloclike;
+void *SAU_MemPool_alloc(SAU_MemPool *restrict o, size_t size) SAU__malloclike;
+void *SAU_MemPool_memdup(SAU_MemPool *restrict o,
+		const void *restrict src, size_t size) SAU__malloclike;

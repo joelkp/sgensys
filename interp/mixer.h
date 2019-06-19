@@ -1,4 +1,4 @@
-/* ssndgen: Audio mixer module.
+/* saugns: Audio mixer module.
  * Copyright (c) 2019-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,35 +14,35 @@
 #pragma once
 #include "../ramp.h"
 
-#define SSG_MIX_BUFLEN 1024
+#define SAU_MIX_BUFLEN 1024
 
-typedef struct SSG_Mixer {
+typedef struct SAU_Mixer {
 	float *mix_l, *mix_r;
 	float *pan_buf;
 	uint32_t srate;
 	float scale;
-} SSG_Mixer;
+} SAU_Mixer;
 
-SSG_Mixer *SSG_create_Mixer(void);
-void SSG_destroy_Mixer(SSG_Mixer *restrict o);
+SAU_Mixer *SAU_create_Mixer(void);
+void SAU_destroy_Mixer(SAU_Mixer *restrict o);
 
 /**
  * Set sample rate used for panning.
  */
-static inline void SSG_Mixer_set_srate(SSG_Mixer *restrict o, uint32_t srate) {
+static inline void SAU_Mixer_set_srate(SAU_Mixer *restrict o, uint32_t srate) {
 	o->srate = srate;
 }
 
 /**
  * Set amplitude scaling.
  */
-static inline void SSG_Mixer_set_scale(SSG_Mixer *restrict o, float scale) {
+static inline void SAU_Mixer_set_scale(SAU_Mixer *restrict o, float scale) {
 	o->scale = scale * 0.5f; // half for panning sum
 }
 
-void SSG_Mixer_clear(SSG_Mixer *restrict o);
-void SSG_Mixer_add(SSG_Mixer *restrict o,
+void SAU_Mixer_clear(SAU_Mixer *restrict o);
+void SAU_Mixer_add(SAU_Mixer *restrict o,
 		float *restrict buf, size_t len,
-		SSG_Ramp *restrict pan, uint32_t *restrict pan_pos);
-void SSG_Mixer_write(SSG_Mixer *restrict o,
+		SAU_Ramp *restrict pan, uint32_t *restrict pan_pos);
+void SAU_Mixer_write(SAU_Mixer *restrict o,
 		int16_t **restrict spp, size_t len);

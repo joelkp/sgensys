@@ -1,4 +1,4 @@
-/* ssndgen: Audio program interpreter pre-run data allocator.
+/* saugns: Audio program interpreter pre-run data allocator.
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -22,19 +22,19 @@
  */
 enum {
 	ON_VISITED = 1<<0,
-	ON_TIME_INF = 1<<1, /* used for SSG_TIMEP_LINKED */
+	ON_TIME_INF = 1<<1, /* used for SAU_TIMEP_LINKED */
 };
 
 typedef struct OperatorNode {
-	SSG_Osc osc;
+	SAU_Osc osc;
 	uint32_t time;
 	uint32_t silence;
 	uint8_t flags;
-	const SSG_ProgramOpList *fmods;
-	const SSG_ProgramOpList *pmods;
-	const SSG_ProgramOpList *amods;
-	SSG_Ramp amp, freq;
-	SSG_Ramp amp2, freq2;
+	const SAU_ProgramOpList *fmods;
+	const SAU_ProgramOpList *pmods;
+	const SAU_ProgramOpList *amods;
+	SAU_Ramp amp, freq;
+	SAU_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
 	uint32_t amp2_pos, freq2_pos;
 } OperatorNode;
@@ -50,35 +50,35 @@ typedef struct VoiceNode {
 	int32_t pos; /* negative for wait time */
 	uint32_t duration;
 	uint8_t flags;
-	const SSG_ProgramOpRef *graph;
+	const SAU_ProgramOpRef *graph;
 	uint32_t graph_count;
-	SSG_Ramp pan;
+	SAU_Ramp pan;
 	uint32_t pan_pos;
 } VoiceNode;
 
 typedef struct EventNode {
 	uint32_t wait;
 	uint32_t graph_count;
-	const SSG_ProgramOpRef *graph;
-	const SSG_ProgramEvent *prg_e;
+	const SAU_ProgramOpRef *graph;
+	const SAU_ProgramEvent *prg_e;
 } EventNode;
 
-SSG_DEF_ArrType(SSG_OpRefArr, SSG_ProgramOpRef, )
+SAU_DEF_ArrType(SAU_OpRefArr, SAU_ProgramOpRef, )
 
 /*
  * Voice data per event during pre-allocation pass.
  */
-typedef struct SSG_VoiceGraph {
-	SSG_OpRefArr vo_graph;
+typedef struct SAU_VoiceGraph {
+	SAU_OpRefArr vo_graph;
 	uint32_t nest_level;
 	uint32_t nest_max; // for all traversals
-} SSG_VoiceGraph;
+} SAU_VoiceGraph;
 
 /*
  * Pre-allocation data. For copying from after filled.
  */
-typedef struct SSG_PreAlloc {
-	const SSG_Program *prg;
+typedef struct SAU_PreAlloc {
+	const SAU_Program *prg;
 	uint32_t srate;
 	size_t ev_count;
 	uint32_t op_count;
@@ -87,10 +87,10 @@ typedef struct SSG_PreAlloc {
 	EventNode **events;
 	VoiceNode *voices;
 	OperatorNode *operators;
-	SSG_MemPool *mem;
-	SSG_VoiceGraph vg;
-} SSG_PreAlloc;
+	SAU_MemPool *mem;
+	SAU_VoiceGraph vg;
+} SAU_PreAlloc;
 
-bool SSG_fill_PreAlloc(SSG_PreAlloc *restrict o,
-		const SSG_Program *restrict prg, uint32_t srate,
-		SSG_MemPool *restrict mem);
+bool SAU_fill_PreAlloc(SAU_PreAlloc *restrict o,
+		const SAU_Program *restrict prg, uint32_t srate,
+		SAU_MemPool *restrict mem);
