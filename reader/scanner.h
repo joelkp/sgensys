@@ -45,7 +45,7 @@ typedef struct SAU_Scanner SAU_Scanner;
  * should be used without filtering.
  *
  * Filter functions may call other filter functions,
- * and are allowed to alter the table.
+ * and are allowed (not done by default functions) to alter the table.
  */
 typedef uint8_t (*SAU_ScanFilter_f)(SAU_Scanner *o, uint8_t c);
 
@@ -77,19 +77,38 @@ enum {
  */
 enum {
 	SAU_SCAN_C_ERROR = 1<<0, // character-level error encountered in script
-	SAU_SCAN_C_LNBRK = 1<<1, // linebreak scanned last get character call
+	SAU_SCAN_C_SPACE = 1<<1, // space scanned during the get
+	SAU_SCAN_C_LNBRK = 1<<2, // linebreak scanned during the get
+	SAU_SCAN_C_LNBRK_POSUP = 1<<3, // pending position update for linebreak
 };
 
 extern const SAU_ScanFilter_f SAU_Scanner_def_filters[SAU_SCAN_FILTER_COUNT];
 
+/**
+ * Whitespace filtering levels, used with
+ * SAU_Scanner_setws_level() to assign standard filter functions.
+ *
+ * Default is SAU_SCAN_WS_ALL. Note that other filter functions,
+ * e.g. comment filters, must filter the whitespace markers they
+ * return using whichever filter functions are set, in order to
+ * avoid excess marker characters in the output.
+ */
+enum {
+	SAU_SCAN_WS_ALL = 0, // include all ws characters mapped to SAU_SCAN_*
+	SAU_SCAN_WS_NONE,    // remove all ws characters
+};
+
 uint8_t SAU_Scanner_filter_invalid(SAU_Scanner *restrict o, uint8_t c);
-uint8_t SAU_Scanner_filter_space(SAU_Scanner *restrict o, uint8_t c);
-uint8_t SAU_Scanner_filter_linebreaks(SAU_Scanner *restrict o, uint8_t c);
+uint8_t SAU_Scanner_filter_space_keep(SAU_Scanner *restrict o, uint8_t c);
+uint8_t SAU_Scanner_filter_linebreak_keep(SAU_Scanner *restrict o, uint8_t c);
+uint8_t SAU_Scanner_filter_ws_none(SAU_Scanner *restrict o, uint8_t c);
 uint8_t SAU_Scanner_filter_linecomment(SAU_Scanner *restrict o, uint8_t c);
 uint8_t SAU_Scanner_filter_blockcomment(SAU_Scanner *restrict o,
 		uint8_t check_c);
 uint8_t SAU_Scanner_filter_slashcomments(SAU_Scanner *restrict o, uint8_t c);
 uint8_t SAU_Scanner_filter_char1comments(SAU_Scanner *restrict o, uint8_t c);
+
+uint8_t SAU_Scanner_setws_level(SAU_Scanner *restrict o, uint8_t ws_level);
 
 /**
  * Scanner state flags for current file.
@@ -122,12 +141,13 @@ struct SAU_Scanner {
 	uint8_t unget_num;
 	uint8_t s_flags;
 	uint8_t match_c; // for use by character filters
+	uint8_t ws_level; // level of SAU_Scanner_setws_level(), presuming use
 	uint8_t *strbuf;
 	void *data; // for use by user
 	SAU_ScanFrame undo[SAU_SCAN_UNGET_MAX + 1];
 };
 
-SAU_Scanner *SAU_create_Scanner(SAU_SymTab *restrict symtab) SAU__malloclike;
+SAU_Scanner *SAU_create_Scanner(SAU_SymTab *restrict symtab) sauMalloclike;
 void SAU_destroy_Scanner(SAU_Scanner *restrict o);
 
 bool SAU_Scanner_open(SAU_Scanner *restrict o,
@@ -150,6 +170,22 @@ static inline SAU_ScanFilter_f SAU_Scanner_getfilter(SAU_Scanner *restrict o,
 }
 
 /**
+ * Call character filter for character \p c, unless a blank entry.
+ * If calling, will set \a match_c for use by the filter function.
+ *
+ * \return result
+ */
+static inline uint8_t SAU_Scanner_usefilter(SAU_Scanner *restrict o,
+		uint8_t c, uint8_t match_c) {
+	SAU_ScanFilter_f f = SAU_Scanner_getfilter(o, c);
+	if (f != NULL) {
+		o->match_c = match_c;
+		return f(o, c);
+	}
+	return c;
+}
+
+/**
  * Callback type allowing reading of named constants using SAU_Scanner_getd().
  * Should return non-zero length if number read and \p var set.
  */
@@ -157,9 +193,7 @@ typedef size_t (*SAU_ScanNumConst_f)(SAU_Scanner *restrict o,
 		double *restrict var);
 
 uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o);
-uint8_t SAU_Scanner_getc_nospace(SAU_Scanner *restrict o);
 bool SAU_Scanner_tryc(SAU_Scanner *restrict o, uint8_t testc);
-bool SAU_Scanner_tryc_nospace(SAU_Scanner *restrict o, uint8_t testc);
 uint32_t SAU_Scanner_ungetc(SAU_Scanner *restrict o);
 bool SAU_Scanner_geti(SAU_Scanner *restrict o,
 		int32_t *restrict var, bool allow_sign,
@@ -171,25 +205,9 @@ bool SAU_Scanner_getd(SAU_Scanner *restrict o,
 bool SAU_Scanner_get_symstr(SAU_Scanner *restrict o,
 		SAU_SymStr **restrict symstrp);
 
-/**
- * Advance past space on the same line.
- * Equivalent to calling SAU_Scanner_tryc() for SAU_SCAN_SPACE.
- */
-static inline void SAU_Scanner_skipspace(SAU_Scanner *restrict o) {
-	SAU_Scanner_tryc(o, SAU_SCAN_SPACE);
-}
-
-/**
- * Advance past whitespace, including linebreaks.
- * Equivalent to calling SAU_Scanner_tryc_nospace() for SAU_SCAN_LNBRK.
- */
-static inline void SAU_Scanner_skipws(SAU_Scanner *restrict o) {
-	SAU_Scanner_tryc_nospace(o, SAU_SCAN_LNBRK);
-}
-
 void SAU_Scanner_warning(const SAU_Scanner *restrict o,
 		const SAU_ScanFrame *restrict sf,
-		const char *restrict fmt, ...) SAU__printflike(3, 4);
+		const char *restrict fmt, ...) sauPrintflike(3, 4);
 void SAU_Scanner_error(SAU_Scanner *restrict o,
 		const SAU_ScanFrame *restrict sf,
-		const char *restrict fmt, ...) SAU__printflike(3, 4);
+		const char *restrict fmt, ...) sauPrintflike(3, 4);

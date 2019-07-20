@@ -132,7 +132,7 @@ typedef struct SAU_Program {
 } SAU_Program;
 
 struct SAU_Script;
-SAU_Program* SAU_build_Program(struct SAU_Script *restrict sd);
+SAU_Program* SAU_build_Program(struct SAU_Script *restrict sd) sauMalloclike;
 void SAU_discard_Program(SAU_Program *restrict o);
 
 void SAU_Program_print_info(const SAU_Program *restrict o,

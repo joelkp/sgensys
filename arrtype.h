@@ -30,9 +30,9 @@ struct SAU_MemPool;
 /**
  * Declare array type using \p Name, with \p ElementType.
  *
- * Only declares type, not methods. See SAU_DEF_ArrType().
+ * Only declares type, not methods. See sauArrType().
  */
-#define SAU_DEF_ArrType_TYPE(Name, ElementType) \
+#define sauArrTypeStruct(Name, ElementType) \
 typedef struct Name { \
 	ElementType *a; \
 	size_t count; \
@@ -42,32 +42,32 @@ typedef struct Name { \
 /**
  * Declare array methods for \p Name, with \p ElementType.
  *
- * Only declares methods, not type. See SAU_DEF_ArrType().
+ * Only declares methods, not type. See sauArrType().
  *
  * The Name_*() methods defined are inline wrappers around the
  * generic methods. If not blank, \p MethodPrefix will be used
  * to prefix their names.
  */
-#define SAU_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix) \
-static inline ElementType SAU__maybe_unused \
+#define sauArrTypeMethods(Name, ElementType, MethodPrefix) \
+static inline ElementType sauMaybeUnused \
 *MethodPrefix##Name##_add(Name *restrict o, \
 		const ElementType *restrict item) { \
 	return SAU_ArrType_add(o, item, sizeof(ElementType)); \
 } \
-static inline bool SAU__maybe_unused \
+static inline bool sauMaybeUnused \
 MethodPrefix##Name##_upsize(Name *restrict o, size_t count) { \
 	return SAU_ArrType_upsize(o, count, sizeof(ElementType)); \
 } \
-static inline void SAU__maybe_unused \
+static inline void sauMaybeUnused \
 MethodPrefix##Name##_clear(Name *restrict o) { \
 	SAU_ArrType_clear(o); \
 } \
-static inline bool SAU__maybe_unused \
+static inline bool sauMaybeUnused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
 		ElementType **restrict dst) { \
 	return SAU_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
 } \
-static inline bool SAU__maybe_unused \
+static inline bool sauMaybeUnused \
 MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 		ElementType **restrict dst, \
 		struct SAU_MemPool *restrict mempool) { \
@@ -78,15 +78,15 @@ MethodPrefix##Name##_mpmemdup(Name *restrict o, \
 /**
  * Declare both type and methods for \p Name, with \p ElementType.
  *
- * Combines SAU_DEF_ArrType_TYPE() and SAU_DEF_ArrType_METHODS().
+ * Combines sauArrTypeStruct() and sauArrTypeMethods().
  *
  * The Name_*() methods defined are inline wrappers around the
  * generic methods. If not blank, \p MethodPrefix will be used
  * to prefix their names.
  */
-#define SAU_DEF_ArrType(Name, ElementType, MethodPrefix) \
-SAU_DEF_ArrType_TYPE(Name, ElementType) \
-SAU_DEF_ArrType_METHODS(Name, ElementType, MethodPrefix)
+#define sauArrType(Name, ElementType, MethodPrefix) \
+sauArrTypeStruct(Name, ElementType) \
+sauArrTypeMethods(Name, ElementType, MethodPrefix)
 
 void *SAU_ArrType_add(void *restrict o,
 		const void *restrict item, size_t item_size);
@@ -100,4 +100,4 @@ bool SAU_ArrType_mpmemdup(void *restrict o,
 		struct SAU_MemPool *mempool);
 
 /** Byte (uint8_t) array type. */
-SAU_DEF_ArrType(SAU_ByteArr, uint8_t, )
+sauArrType(SAU_ByteArr, uint8_t, )

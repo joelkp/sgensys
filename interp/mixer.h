@@ -23,7 +23,7 @@ typedef struct SAU_Mixer {
 	float scale;
 } SAU_Mixer;
 
-SAU_Mixer *SAU_create_Mixer(void);
+SAU_Mixer *SAU_create_Mixer(void) sauMalloclike;
 void SAU_destroy_Mixer(SAU_Mixer *restrict o);
 
 /**

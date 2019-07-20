@@ -23,7 +23,7 @@
 
 static const SAU_ProgramOpList blank_oplist = {0};
 
-static SAU__noinline const SAU_ProgramOpList
+static sauNoinline const SAU_ProgramOpList
 *create_ProgramOpList(const SAU_RefList *restrict op_list,
 		SAU_MemPool *restrict mem) {
 	size_t count = op_list->ref_count;
@@ -194,7 +194,7 @@ static void SAU_OpAlloc_clear(SAU_OpAlloc *restrict o) {
 	_SAU_OpAlloc_clear(o);
 }
 
-SAU_DEF_ArrType(OpDataArr, SAU_ProgramOpData, _)
+sauArrType(OpDataArr, SAU_ProgramOpData, _)
 
 typedef struct ScriptConv {
 	SAU_PtrArr ev_list;
@@ -459,7 +459,7 @@ void SAU_discard_Program(SAU_Program *restrict o) {
 	SAU_destroy_MemPool(o->mem);
 }
 
-static SAU__noinline void print_linked(const char *restrict header,
+static sauNoinline void print_linked(const char *restrict header,
 		const char *restrict footer,
 		const SAU_ProgramOpList *restrict list) {
 	if (!list || !list->count)

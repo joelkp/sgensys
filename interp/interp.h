@@ -17,8 +17,8 @@
 struct SAU_Interp;
 typedef struct SAU_Interp SAU_Interp;
 
-SAU_Interp *SAU_create_Interp(const SAU_Program *restrict prg,
-		uint32_t srate) SAU__malloclike;
+SAU_Interp* SAU_create_Interp(const SAU_Program *restrict prg,
+		uint32_t srate) sauMalloclike;
 void SAU_destroy_Interp(SAU_Interp *restrict o);
 
 size_t SAU_Interp_run(SAU_Interp *restrict o,

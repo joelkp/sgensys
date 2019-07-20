@@ -117,5 +117,6 @@ typedef struct SAU_Script {
 	struct SAU_MemPool *mem; // internally used, provided until destroy
 } SAU_Script;
 
-SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path);
+SAU_Script *SAU_load_Script(const char *restrict script_arg, bool is_path)
+	sauMalloclike;
 void SAU_discard_Script(SAU_Script *restrict o);

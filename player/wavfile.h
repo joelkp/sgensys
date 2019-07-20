@@ -22,7 +22,7 @@ struct SAU_WAVFile;
 typedef struct SAU_WAVFile SAU_WAVFile;
 
 SAU_WAVFile *SAU_create_WAVFile(const char *restrict fpath,
-		uint16_t channels, uint32_t srate) SAU__malloclike;
+		uint16_t channels, uint32_t srate) sauMalloclike;
 int SAU_close_WAVFile(SAU_WAVFile *restrict o);
 
 bool SAU_WAVFile_write(SAU_WAVFile *restrict o,

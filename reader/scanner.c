@@ -26,7 +26,7 @@ static size_t misses = 0;
 #endif
 
 /**
- * Create instance.
+ * Create instance. Requires \p symtab to be a valid instance.
  *
  * Assigns a modifiable copy of the SAU_Scanner_def_filters array,
  * freed when the instance is destroyed.
@@ -45,6 +45,7 @@ SAU_Scanner *SAU_create_Scanner(SAU_SymTab *restrict symtab) {
 	size_t filters_size = sizeof(SAU_ScanFilter_f) * SAU_SCAN_FILTER_COUNT;
 	o->filters = SAU_memdup(SAU_Scanner_def_filters, filters_size);
 	if (!o->filters) goto ERROR;
+	o->ws_level = SAU_SCAN_WS_ALL;
 	o->strbuf = calloc(1, STRBUF_LEN);
 	if (!o->strbuf) goto ERROR;
 	return o;
@@ -111,7 +112,7 @@ void SAU_Scanner_close(SAU_Scanner *restrict o) {
 /* Valid characters in identifiers. */
 #define IS_SYMCHAR(c) (IS_ALNUM(c) || (c) == '_')
 
-static uint8_t filter_symchar(SAU_File *restrict o SAU__maybe_unused,
+static uint8_t filter_symchar(SAU_File *restrict o sauMaybeUnused,
 		uint8_t c) {
 	return IS_SYMCHAR(c) ? c : 0;
 }
@@ -164,52 +165,83 @@ uint8_t SAU_Scanner_filter_invalid(SAU_Scanner *restrict o, uint8_t c) {
 		return 0;
 	}
 	uint8_t status = SAU_File_STATUS(f);
-	if ((status & SAU_FILE_ERROR) != 0) {
+	if (status & SAU_FILE_ERROR) {
 		SAU_Scanner_error(o, NULL,
 			"file reading failed");
 	}
 	return SAU_SCAN_EOF;
 }
 
+static inline void pos_past_linebreak(SAU_Scanner *restrict o,
+		size_t char_num) {
+	++o->sf.line_num;
+	o->sf.char_num = char_num;
+}
+
 /**
- * Get characters until the next is neither a space nor a tab.
+ * Return standard space marker (for space or tab).
  *
  * \return SAU_SCAN_SPACE
  */
-uint8_t SAU_Scanner_filter_space(SAU_Scanner *restrict o,
-		uint8_t c SAU__maybe_unused) {
-	SAU_File *f = o->f;
-	o->sf.char_num += SAU_File_skipspace(f);
+uint8_t SAU_Scanner_filter_space_keep(SAU_Scanner *restrict o sauMaybeUnused,
+		uint8_t c sauMaybeUnused) {
+	o->sf.c_flags |= SAU_SCAN_C_SPACE;
 	return SAU_SCAN_SPACE;
 }
 
 /**
- * Get characters until the next is not a linebreak.
+ * Handle linebreak portably (move past CR for LF),
+ * and return standard linebreak marker.
  *
  * \return SAU_SCAN_LNBRK
  */
-uint8_t SAU_Scanner_filter_linebreaks(SAU_Scanner *restrict o, uint8_t c) {
+uint8_t SAU_Scanner_filter_linebreak_keep(SAU_Scanner *restrict o, uint8_t c) {
 	SAU_File *f = o->f;
 	if (c == '\n') SAU_File_TRYC(f, '\r');
-	while (SAU_File_trynewline(f)) {
-		++o->sf.line_num;
-		o->sf.char_num = 0;
-	}
+	o->sf.c_flags |= (SAU_SCAN_C_LNBRK | SAU_SCAN_C_LNBRK_POSUP);
 	return SAU_SCAN_LNBRK;
 }
 
 /**
- * Get characters until the next character ends the line (or file).
+ * Skip spaces and/or linebreaks.
+ *
+ * \return 0
+ */
+uint8_t SAU_Scanner_filter_ws_none(SAU_Scanner *restrict o, uint8_t c) {
+	SAU_File *f = o->f;
+	if (c == '\n') {
+		SAU_File_TRYC(f, '\r');
+	} else if (c != '\r') {
+		o->sf.char_num += SAU_File_skipspace(f);
+		return 0;
+	}
+	o->sf.c_flags |= SAU_SCAN_C_LNBRK;
+	o->sf.c_flags &= ~SAU_SCAN_C_LNBRK_POSUP;
+	pos_past_linebreak(o, 0);
+
+	size_t space_count;
+LNBRK:
+	while (SAU_File_trynewline(f)) pos_past_linebreak(o, 0);
+	space_count = SAU_File_skipspace(f);
+	if (space_count > 0) {
+		o->sf.char_num = space_count;
+		goto LNBRK;
+	}
+	return 0;
+}
+
+/**
+ * Skip characters until the next character ends the line (or file).
  *
  * Call for a character to use it as a line comment opener.
  *
- * \return SAU_SCAN_SPACE
+ * \return 0
  */
 uint8_t SAU_Scanner_filter_linecomment(SAU_Scanner *restrict o,
-		uint8_t c SAU__maybe_unused) {
+		uint8_t c sauMaybeUnused) {
 	SAU_File *f = o->f;
 	o->sf.char_num += SAU_File_skipline(f);
-	return SAU_SCAN_SPACE;
+	return 0;
 }
 
 /**
@@ -220,8 +252,11 @@ uint8_t SAU_Scanner_filter_linecomment(SAU_Scanner *restrict o,
  *
  * Does not set the linebreak flag. Linebreaks within a block comment
  * are ignored (commented out), apart from in line numbering.
+ * A block comment counts syntactically as a single space (so that
+ * it cannot silently be placed between characters in a token),
+ * unless all whitespace is filtered out.
  *
- * \return SAU_SCAN_SPACE or SAU_SCAN_EOF (on unterminated comment)
+ * \return filtered SAU_SCAN_SPACE, or SAU_SCAN_EOF (on unterminated comment)
  */
 uint8_t SAU_Scanner_filter_blockcomment(SAU_Scanner *restrict o,
 		uint8_t check_c) {
@@ -254,7 +289,7 @@ uint8_t SAU_Scanner_filter_blockcomment(SAU_Scanner *restrict o,
 	}
 	o->sf.line_num = line_num;
 	o->sf.char_num = char_num;
-	return SAU_SCAN_SPACE;
+	return SAU_Scanner_usefilter(o, SAU_SCAN_SPACE, SAU_SCAN_SPACE);
 }
 
 /**
@@ -264,7 +299,7 @@ uint8_t SAU_Scanner_filter_blockcomment(SAU_Scanner *restrict o,
  * handling comment if present, otherwise simply returning the first
  * character.
  *
- * \return \p c, SAU_SCAN_SPACE, or SAU_SCAN_EOF (on unterminated comment)
+ * \return \p c, 0, filtered SAU_SCAN_SPACE, or SAU_SCAN_EOF
  */
 uint8_t SAU_Scanner_filter_slashcomments(SAU_Scanner *restrict o, uint8_t c) {
 	SAU_File *f = o->f;
@@ -290,7 +325,7 @@ uint8_t SAU_Scanner_filter_slashcomments(SAU_Scanner *restrict o, uint8_t c) {
  * for the first character position only. (For example,
  * git-style comments, or old Fortran comments.)
  *
- * \return \p c or SAU_SCAN_SPACE
+ * \return \p c or 0
  */
 uint8_t SAU_Scanner_filter_char1comments(SAU_Scanner *restrict o, uint8_t c) {
 	if (o->sf.char_num == 1)
@@ -314,11 +349,11 @@ const SAU_ScanFilter_f SAU_Scanner_def_filters[SAU_SCAN_FILTER_COUNT] = {
 	/* ACK 0x06 */ SAU_Scanner_filter_invalid,
 	/* BEL '\a' */ SAU_Scanner_filter_invalid, // SAU_FILE_MARKER
 	/* BS  '\b' */ SAU_Scanner_filter_invalid,
-	/* HT  '\t' */ SAU_Scanner_filter_space,
-	/* LF  '\n' */ SAU_Scanner_filter_linebreaks,
+	/* HT  '\t' */ SAU_Scanner_filter_space_keep,
+	/* LF  '\n' */ SAU_Scanner_filter_linebreak_keep,
 	/* VT  '\v' */ SAU_Scanner_filter_invalid,
 	/* FF  '\f' */ SAU_Scanner_filter_invalid,
-	/* CR  '\r' */ SAU_Scanner_filter_linebreaks,
+	/* CR  '\r' */ SAU_Scanner_filter_linebreak_keep,
 	/* SO  0x0E */ SAU_Scanner_filter_invalid,
 	/* SI  0x0F */ SAU_Scanner_filter_invalid,
 	/* DLE 0x10 */ SAU_Scanner_filter_invalid,
@@ -337,7 +372,7 @@ const SAU_ScanFilter_f SAU_Scanner_def_filters[SAU_SCAN_FILTER_COUNT] = {
 	/* GS  0x1D */ SAU_Scanner_filter_invalid,
 	/* RS  0x1E */ SAU_Scanner_filter_invalid,
 	/* US  0x1F */ SAU_Scanner_filter_invalid,
-	/*     ' '  */ SAU_Scanner_filter_space,
+	/*     ' '  */ SAU_Scanner_filter_space_keep,
 	/*     '!'  */ NULL,
 	/*     '"'  */ NULL,
 	/*     '#'  */ SAU_Scanner_filter_linecomment,
@@ -435,6 +470,31 @@ const SAU_ScanFilter_f SAU_Scanner_def_filters[SAU_SCAN_FILTER_COUNT] = {
 	/* DEL 0x7F */ SAU_Scanner_filter_invalid,
 };
 
+/**
+ * Set filter functions for whitespace characters to a standard set.
+ *
+ * \return old ws_level value
+ */
+uint8_t SAU_Scanner_setws_level(SAU_Scanner *restrict o, uint8_t ws_level) {
+	uint8_t old_level = o->ws_level;
+	switch (ws_level) {
+	case SAU_SCAN_WS_ALL: // default level
+		o->filters['\t'] = SAU_Scanner_filter_space_keep;
+		o->filters['\n'] = SAU_Scanner_filter_linebreak_keep;
+		o->filters['\r'] = SAU_Scanner_filter_linebreak_keep;
+		o->filters[' ']  = SAU_Scanner_filter_space_keep;
+		break;
+	case SAU_SCAN_WS_NONE:
+		o->filters['\t'] = SAU_Scanner_filter_ws_none;
+		o->filters['\n'] = SAU_Scanner_filter_ws_none;
+		o->filters['\r'] = SAU_Scanner_filter_ws_none;
+		o->filters[' ']  = SAU_Scanner_filter_ws_none;
+		break;
+	}
+	o->ws_level = ws_level;
+	return old_level;
+}
+
 /*
  * Assign scan frame from undo buffer.
  */
@@ -454,17 +514,17 @@ static void prepare_frame(SAU_Scanner *restrict o) {
 		restore_frame(o, --o->unget_num);
 		return;
 	}
-	if ((o->s_flags & SAU_SCAN_S_DISCARD) != 0) {
+	if (o->s_flags & SAU_SCAN_S_DISCARD) {
 		o->s_flags &= ~SAU_SCAN_S_DISCARD;
 	} else {
 		o->undo_pos = (o->undo_pos + 1) & SAU_SCAN_UNGET_MAX;
 	}
 	o->undo[o->undo_pos] = o->sf;
-	if ((o->sf.c_flags & SAU_SCAN_C_LNBRK) != 0) {
-		o->sf.c_flags &= ~SAU_SCAN_C_LNBRK;
-		++o->sf.line_num;
-		o->sf.char_num = 0;
+	if (o->sf.c_flags & SAU_SCAN_C_LNBRK_POSUP) {
+		o->sf.c_flags &= ~SAU_SCAN_C_LNBRK_POSUP;
+		pos_past_linebreak(o, 0);
 	}
+	o->sf.c_flags &= ~(SAU_SCAN_C_SPACE | SAU_SCAN_C_LNBRK);
 }
 
 /*
@@ -507,9 +567,8 @@ static void advance_frame(SAU_Scanner *o, size_t strlen, uint8_t c) {
 }
 
 /**
- * Get next character. Reduces whitespace, returning one space marker
- * for spaces, tabs, and/or comments, and one linebreak marker
- * for linebreaks.
+ * Get next character. Filter functions will be used with
+ * \a match_c set to 0.
  *
  * Upon end of file, 0 will be returned. A 0 value in the
  * input is otherwise moved past, printing a warning.
@@ -519,92 +578,22 @@ static void advance_frame(SAU_Scanner *o, size_t strlen, uint8_t c) {
 uint8_t SAU_Scanner_getc(SAU_Scanner *restrict o) {
 	SAU_File *f = o->f;
 	uint8_t c;
-	bool skipped_space = false;
 	prepare_frame(o);
 	for (;;) {
 		++o->sf.char_num;
 		c = SAU_File_GETC(f);
-		SAU_ScanFilter_f filter = SAU_Scanner_getfilter(o, c);
-		if (!filter) break;
-		c = filter(o, c);
-		if (c == SAU_SCAN_SPACE) {
-			skipped_space = true;
-			continue;
-		}
+		c = SAU_Scanner_usefilter(o, c, 0);
 		if (c != 0) break;
 	}
 	if (c == SAU_SCAN_EOF)
 		return 0;
 	set_usedc(o, c);
-	if (skipped_space) {
-		/*
-		 * Unget a character and store skipped space
-		 * before returning it.
-		 */
-		SAU_File_UNGETC(f);
-		--o->sf.char_num;
-		set_usedc(o, SAU_SCAN_SPACE);
-		return SAU_SCAN_SPACE;
-	}
-	if (c == SAU_SCAN_LNBRK) {
-		o->sf.c_flags |= SAU_SCAN_C_LNBRK;
-	}
 	return c;
 }
 
 /**
- * Get next character. Removes whitespace, except for a single linebreak
- * marker if linebreaks were filtered.
- *
- * Upon end of file, 0 will be returned. A 0 value in the
- * input is otherwise moved past, printing a warning.
- *
- * \return character or 0 upon end of file
- */
-uint8_t SAU_Scanner_getc_nospace(SAU_Scanner *restrict o) {
-	SAU_File *f = o->f;
-	uint8_t c;
-	SAU_ScanFilter_f filter;
-	bool skipped_lnbrk = false;
-	int32_t old_char_num;
-	prepare_frame(o);
-	for (;;) {
-		++o->sf.char_num;
-		c = SAU_File_GETC(f);
-		filter = SAU_Scanner_getfilter(o, c);
-		if (!filter) break;
-		c = filter(o, c);
-		if (c == SAU_SCAN_SPACE) continue;
-		if (c == SAU_SCAN_LNBRK) {
-			skipped_lnbrk = true;
-			old_char_num = o->sf.char_num;
-			++o->sf.line_num;
-			o->sf.char_num = 0;
-			continue;
-		}
-		if (c != 0) break;
-	}
-	if (c == SAU_SCAN_EOF)
-		return 0;
-	set_usedc(o, c);
-	if (skipped_lnbrk) {
-		/*
-		 * Unget a character and store skipped linebreak
-		 * before returning it.
-		 */
-		SAU_File_UNGETC(f);
-		--o->sf.line_num;
-		o->sf.char_num = old_char_num;
-		o->sf.c_flags |= SAU_SCAN_C_LNBRK;
-		set_usedc(o, SAU_SCAN_LNBRK);
-		return SAU_SCAN_LNBRK;
-	}
-	return c;
-}
-
-/**
- * Get next character if it matches \p testc,
- * filtering whitespace like SAU_Scanner_getc().
+ * Get next character if it matches \p testc.
+ * Note that characters removed by filters cannot be tested successfully.
  *
  * For filtered characters, does a get followed by SAU_Scanner_ungetc()
  * if the characters do not match; characters skipped or changed by the
@@ -627,39 +616,6 @@ bool SAU_Scanner_tryc(SAU_Scanner *restrict o, uint8_t testc) {
 		return true;
 	}
 	c = SAU_Scanner_getc(o);
-	if (c != testc) {
-		o->s_flags |= SAU_SCAN_S_DISCARD;
-		SAU_Scanner_ungetc(o);
-		return false;
-	}
-	return true;
-}
-
-/**
- * Get next character if it matches \p testc,
- * filtering whitespace like SAU_Scanner_getc_nospace().
- *
- * For filtered characters, does a get followed by SAU_Scanner_ungetc()
- * if the characters do not match; characters skipped or changed by the
- * filtering remain skipped or changed for future gets.
- *
- * \return true if character matched \p testc
- */
-bool SAU_Scanner_tryc_nospace(SAU_Scanner *restrict o, uint8_t testc) {
-	uint8_t c = SAU_File_RETC(o->f);
-	/*
-	 * Use quick handling for unfiltered characters.
-	 */
-	if (!SAU_Scanner_getfilter(o, c)) {
-		if (c != testc)
-			return false;
-		prepare_frame(o);
-		++o->sf.char_num;
-		SAU_File_INCP(o->f);
-		o->sf.c = c;
-		return true;
-	}
-	c = SAU_Scanner_getc_nospace(o);
 	if (c != testc) {
 		o->s_flags |= SAU_SCAN_S_DISCARD;
 		SAU_Scanner_ungetc(o);
@@ -844,7 +800,7 @@ static void print_stderr(const SAU_Scanner *restrict o,
 void SAU_Scanner_warning(const SAU_Scanner *restrict o,
 		const SAU_ScanFrame *restrict sf,
 		const char *restrict fmt, ...) {
-	if ((o->s_flags & SAU_SCAN_S_QUIET) != 0)
+	if (o->s_flags & SAU_SCAN_S_QUIET)
 		return;
 	va_list ap;
 	va_start(ap, fmt);

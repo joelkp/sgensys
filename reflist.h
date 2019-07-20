@@ -51,7 +51,7 @@ typedef struct SAU_RefList {
 struct SAU_MemPool;
 
 SAU_RefList *SAU_create_RefList(int list_type,
-		struct SAU_MemPool *restrict mem) SAU__malloclike;
+		struct SAU_MemPool *restrict mem) sauMalloclike;
 bool SAU_copy_RefList(SAU_RefList **restrict dstp,
 		const SAU_RefList *restrict src,
 		struct SAU_MemPool *restrict mem);
@@ -61,7 +61,7 @@ bool SAU_RefList_unshallow(SAU_RefList *restrict o,
 		struct SAU_MemPool *restrict mem);
 SAU_RefItem *SAU_RefList_add(SAU_RefList *restrict o,
 		void *restrict data, int ref_type,
-		struct SAU_MemPool *restrict mem) SAU__malloclike;
+		struct SAU_MemPool *restrict mem) sauMalloclike;
 bool SAU_RefList_drop(SAU_RefList *restrict o,
 		struct SAU_MemPool *restrict mem);
 void SAU_RefList_clear(SAU_RefList *restrict o);

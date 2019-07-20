@@ -174,8 +174,8 @@ struct SAU_File {
 	uint8_t buf[SAU_FILE_BUFSIZ];
 };
 
-SAU_File *SAU_create_File(void) SAU__malloclike;
-SAU_File *SAU_create_sub_File(SAU_File *restrict parent) SAU__malloclike;
+SAU_File *SAU_create_File(void) sauMalloclike;
+SAU_File *SAU_create_sub_File(SAU_File *restrict parent) sauMalloclike;
 SAU_File *SAU_destroy_File(SAU_File *restrict o);
 
 void SAU_File_init(SAU_File *restrict o,

@@ -43,8 +43,8 @@ const SAU_Ramp_fill_f SAU_Ramp_fill_funcs[SAU_RAMP_TYPES] = {
  * i.e. \p len copies of \p v0.
  */
 void SAU_Ramp_fill_hold(float *restrict buf, uint32_t len,
-		float v0, float vt SAU__maybe_unused,
-		uint32_t pos SAU__maybe_unused, uint32_t time SAU__maybe_unused) {
+		float v0, float vt sauMaybeUnused,
+		uint32_t pos sauMaybeUnused, uint32_t time sauMaybeUnused) {
 	uint32_t i;
 	for (i = 0; i < len; ++i)
 		buf[i] = v0;

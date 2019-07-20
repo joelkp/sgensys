@@ -26,8 +26,8 @@
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool h_arg SAU__maybe_unused,
-		const char *restrict h_type SAU__maybe_unused) {
+static void print_usage(bool h_arg sauMaybeUnused,
+		const char *restrict h_type sauMaybeUnused) {
 	fputs(
 "Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"

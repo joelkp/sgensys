@@ -22,7 +22,7 @@ struct SAU_AudioDev;
 typedef struct SAU_AudioDev SAU_AudioDev;
 
 SAU_AudioDev *SAU_open_AudioDev(uint16_t channels, uint32_t *restrict srate)
-		SAU__malloclike;
+	sauMalloclike;
 void SAU_close_AudioDev(SAU_AudioDev *restrict o);
 
 uint32_t SAU_AudioDev_get_srate(const SAU_AudioDev *restrict o);

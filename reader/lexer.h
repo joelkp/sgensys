@@ -39,7 +39,7 @@ typedef struct SAU_ScriptToken {
 struct SAU_Lexer;
 typedef struct SAU_Lexer SAU_Lexer;
 
-SAU_Lexer *SAU_create_Lexer(SAU_SymTab *restrict symtab) SAU__malloclike;
+SAU_Lexer *SAU_create_Lexer(SAU_SymTab *restrict symtab) sauMalloclike;
 void SAU_destroy_Lexer(SAU_Lexer *restrict o);
 
 bool SAU_Lexer_open(SAU_Lexer *restrict o,

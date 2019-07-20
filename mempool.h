@@ -21,9 +21,9 @@
 struct SAU_MemPool;
 typedef struct SAU_MemPool SAU_MemPool;
 
-SAU_MemPool *SAU_create_MemPool(size_t block_size) SAU__malloclike;
+SAU_MemPool *SAU_create_MemPool(size_t block_size) sauMalloclike;
 void SAU_destroy_MemPool(SAU_MemPool *restrict o);
 
-void *SAU_MemPool_alloc(SAU_MemPool *restrict o, size_t size) SAU__malloclike;
+void *SAU_MemPool_alloc(SAU_MemPool *restrict o, size_t size) sauMalloclike;
 void *SAU_MemPool_memdup(SAU_MemPool *restrict o,
-		const void *restrict src, size_t size) SAU__malloclike;
+		const void *restrict src, size_t size) sauMalloclike;

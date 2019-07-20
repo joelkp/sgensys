@@ -63,7 +63,7 @@ typedef struct EventNode {
 	const SAU_ProgramEvent *prg_e;
 } EventNode;
 
-SAU_DEF_ArrType(SAU_OpRefArr, SAU_ProgramOpRef, )
+sauArrType(SAU_OpRefArr, SAU_ProgramOpRef, )
 
 /*
  * Voice data per event during pre-allocation pass.

@@ -30,16 +30,16 @@
  */
 
 #if defined(__GNUC__) || defined(__clang__)
-# define SAU__malloclike __attribute__((malloc))
-# define SAU__maybe_unused __attribute__((unused))
-# define SAU__noinline __attribute__((noinline))
-# define SAU__printflike(string_index, first_to_check) \
+# define sauMalloclike __attribute__((malloc))
+# define sauMaybeUnused __attribute__((unused))
+# define sauNoinline __attribute__((noinline))
+# define sauPrintflike(string_index, first_to_check) \
 	__attribute__((format(printf, string_index, first_to_check)))
 #else
-# define SAU__malloclike
-# define SAU__maybe_unused
-# define SAU__noinline
-# define SAU__printflike(string_index, first_to_check)
+# define sauMalloclike
+# define sauMaybeUnused
+# define sauNoinline
+# define sauPrintflike(string_index, first_to_check)
 #endif
 
 /*
@@ -57,11 +57,11 @@
  */
 
 void SAU_warning(const char *restrict label, const char *restrict fmt, ...)
-	SAU__printflike(2, 3);
+	sauPrintflike(2, 3);
 void SAU_error(const char *restrict label, const char *restrict fmt, ...)
-	SAU__printflike(2, 3);
+	sauPrintflike(2, 3);
 
-void *SAU_memdup(const void *restrict src, size_t size) SAU__malloclike;
+void *SAU_memdup(const void *restrict src, size_t size) sauMalloclike;
 
 /*
  * Debugging options.
