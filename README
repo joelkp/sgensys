@@ -91,9 +91,6 @@ Each of these keywords is further described in its own section below.
 		a carrier and/or modulator which produces sound
 		for a duration; the "O" is followed by the (initial)
 		wave type, as in "Osin".
-	Q	Quit script; end parsing, commenting out all that follows.
-		Optional. (Commenting more generally uses "#", "//",
-		or "/*...*/" syntax.)
 
 See the section 'Timing' for modifiers.
 
@@ -219,15 +216,6 @@ Parameters:
 	c	Channel mixing; see "Channel mixing values".
 		"Value ramp" values are supported; see section.
 
-Q: Quit
--------
-
-Quit script; end parsing, commenting out all that follows.
-Optional.
-
-Commenting more generally uses "#" or "//" line comments,
-or "/*...*/" C-style block comments.
-
 Values and expressions
 ----------------------
 
@@ -235,8 +223,11 @@ Whitespace is not allowed within multi-character names, keywords or
 numbers, and separates values. Spaces and tabs may otherwise be used or
 omitted anywhere.
 
-Following a "#" or "//", the rest of a line is commented out.
-Following "/*", text is commented out until "*/" is encountered.
+Comment syntax:
+	"//" (C++-comment) comments out the rest of the line.
+	"/*" (C-comment) comments out text until after the next "*/".
+	"#!" (Shebang) comments out the rest of the line.
+	"#Q" (Quit file) comments out the rest of the whole file.
 
 Numerical expressions are allowed within parentheses, allowing numbers
 to be specified using basic arithmetic and freely placed whitespace.
