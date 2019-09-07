@@ -1,0 +1,92 @@
+.Dd July 23, 2020
+.Dt SAUGNS 1
+.Os
+.Sh NAME
+.Nm saugns
+.Nd Scriptable AUdio GeNeration System
+.Sh SYNOPSIS
+.Nm saugns
+.Op Fl a | m
+.Op Fl r Ar srate
+.Op Fl o Ar wavfile
+.Op Ar options
+.Ar script ...
+.Nm saugns
+.Op Fl c
+.Op Ar options
+.Ar script ...
+.Sh DESCRIPTION
+.Nm
+is an audio generation program.
+Written in C, it implements the SAU (Scriptable AUdio) language \-
+a simple language for mathematical sound synthesis.
+.Pp
+The program reads SAU (Scriptable AUdio) files by default,
+or passed strings if the
+.Fl e
+option is used.
+Output is by default to system audio, but may instead be muted and/or
+written to a 16-bit PCM WAV file.
+.Pp
+Scripts can use an arbitrary number of oscillators,
+each with one of various wave forms.
+Synthesis techniques supported include PM, FM, and AM.
+Duration and some other attributes can be calculated for each script
+without generating audio; the scripting language is not Turing complete.
+.Sh OPTIONS
+By default, audio device output is enabled.
+.Bl -tag -width Ds
+.It Fl a
+Audible; always enable audio device output.
+.It Fl m
+Muted; always disable audio device output.
+.It Fl r
+Sample rate in Hz (default 96000);
+if unsupported for audio device, warns and prints rate used instead.
+.It Fl o
+Write a 16-bit PCM WAV file, always using the sample rate requested;
+disables audio device output by default.
+.It Fl e
+Evaluate strings instead of files.
+.It Fl c
+Check scripts only, reporting any errors or requested info.
+.It Fl p
+Print info for scripts after loading.
+.It Fl h
+Print help for topic, or list of topics.
+.It Fl v
+Print version.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with 0 if no scripts are to be processed,
+or upon successful processing of one or more scripts,
+even if some scripts were excluded due to failed parse or checks.
+.Pp
+If scripts were to be processed but none of them passed checks for further use,
+or if any errors occured after checks (during interpretation and audio output),
+1 is returned.
+.Sh SAU LANGUAGE SYNTAX
+A compact SAU language reference (plaintext) comes with the installation.
+By default, it is copied to:
+.Pa /usr/local/share/doc/saugns/README.SAU
+.Pp
+A less compact overview with some examples can be found at:
+.Pa https://saugns.github.io/syntax.html
+.Sh EXAMPLES
+One-second beep:
+.Dl % "saugns -e ""Osin"""
+.Pp
+10 seconds of "engine rumble" using PM:
+.Dl % "saugns -e ""Osin f137 t10 p+[Osin f32 p+[Osin f42]]"""
+.Pp
+A set of example scripts come with the installation.
+By default, they are copied to:
+.Pa /usr/local/share/examples/saugns/
+.Sh HISTORY
+The program was first written in 2011, released in 2012.
+Reworked after 2017, renamed from sgensys to saugns in 2019.
+More detailed history can be found at:
+.Pa https://saugns.github.io/history.html
+.Sh AUTHORS
+.An Joel K. Pettersson <joelkpettersson@gmail.com>

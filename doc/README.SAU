@@ -1,0 +1,274 @@
+SAU is a simple language for mathematical sound synthesis,
+without support for the use of pre-recorded samples.
+
+The current syntax uses keywords followed by zero or more
+parameters with arguments. Each main keyword provides an action,
+either at run time (like a function call in other languages),
+or at parse time (like a global script setting).
+
+The most important keyword, "O" followed by a wavetype, adds an
+operator (FM synth terminology for oscillator with a certain
+configurability). They may be connected as carriers and modulators.
+They, and the timing of their running, make the core features of
+the scripting language.
+
+Events and timing are central; each addition of an operator, or
+later change to operator or voice parameters, is an event. Timing
+modifiers may be used quite freely in the script to change the
+relative time placement of events.
+
+Keyword parameters may either be set (named, followed by writing
+their argument(s)), or left out to use the previous value or a
+default value. Some default values can be changed using the "S"
+(set option) parse-time action.
+
+Modifiers are similar to keywords, but simpler and more flexible
+in how they may be used. They may or may not be followed by an
+argument (e.g. a delay time).
+
+Syntax overview
+===============
+
+Keywords
+--------
+
+Each of these keywords is further described in its own section below.
+	S	Set option (parameter default value or other);
+		runs during parsing.
+	O	Add operator, as in oscillator with parameters;
+		a carrier and/or modulator which produces sound
+		for a duration; the "O" is followed by the (initial)
+		wave type, as in "Osin".
+
+See the section 'Timing' for modifiers.
+
+S: Set option
+-------------
+
+Set parameter default value or other option; runs during parsing.
+Usage: "S", followed by zero or more parameters, each with a value.
+
+Parameters:
+	c	Default O "c" (channel mixing) value. Starts at 0.0,
+		i.e. C (center). See "Channel mixing values" for more.
+		Useful as a main way of setting the parameter value.
+	f	Default O "f" (frequency, Hz) value. Starts at 444.
+	r	Default O "r" (relative frequency) value. Starts at 1.
+	t	Default O "t" (time, seconds) value. Starts at 1.
+	a	Multiplier for O "a" (amplitude) value, applied when
+		adding a top-level carrier. If used, this disables automatic
+		down-scaling of amplitude by the number of voices, for
+		manual control instead.
+	n	A4 tuning (Hz) for O "f" (frequency, Hz) value using
+		note syntax. Starts at 444.
+
+O: Operator
+-----------
+
+Add operator, as in oscillator with parameters. If a carrier
+and not a modulator, adds sound at current time position,
+playing for the time duration.
+
+Usage: "O" followed by (initial) wave type (e.g. "Osin"),
+followed by zero or more parameters, each with a value.
+
+Wave types:
+	sin	Sine.
+			For cosine, use (1/4) phase.
+	sqr	Square (anti-aliased cycle).
+			Lacks full "bite" at low frequencies.
+	tri	Triangle (naive).
+	saw	Saw (anti-aliased cycle).
+			Lacks full "bite" at low frequencies.
+			Decreasing slope; use negative amplitude
+			or frequency for increasing slope.
+	sha	Half-frequency absolute sine (adjusted).
+			Frequency halved to restore base frequency,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A softer alternative to "saw" (saw wave).
+	szh	Half-zero'd sine (adjusted).
+			Positive half kept, negative half zero'd,
+			peak amplitude centered and doubled, phase
+			shifted to begin and end at zero amplitude.
+			A warm and full sound.
+	ssr	Square root of sine.
+			Mirrored for the negative half.
+			A softer alternative to "sqr" (square wave).
+
+Channel mixing values:
+	Panning, where 0.0 is centered. Named constants can be used in place
+	of numbers for the three classic channel "modes". Values outside the
+	range of L to R are allowed, amplifying one channel while giving the
+	other a negative amplitude.
+	C	0.0
+	L	(-1.0)
+	R	1.0
+
+Parameters:
+	t	Time duration in seconds. If no t setting is given, the
+		time set depends on the context.
+			For a single non-nested operator, 1 is used unless
+		the default value is changed with "S t".
+			When several operators are specified at the same
+		time and time is explicitly set for at least one, the
+		default time is the combined duration of their play.
+		(t* can also be used to specify this explicitly.)
+			For nested operators, i.e. modulators, the default
+		time is infinite (can also be set as "ti"), meaning they
+		play whenever a carrier they are linked to does. Infinite
+		duration is only supported for nested operators, all scripts
+		having finite duration.
+			For a composite event, the first part is given the
+		S default value if none set. The following parts will each
+		in turn be given the value of the preceding part if not
+		explicitly set - with the exception of nested operators for
+		the last part, which will have infinite time (ti) by default.
+	f	Frequency in Hz. Can be negative to flip wave shape timewise.
+			"Value ramp" values are supported; see section.
+			"Modulation with value range" is supported for FM
+		(frequency modulation); see section.
+	r	(For modulator operators only.) Relative frequency, a value
+		which will be multiplied by the carrier frequency to give
+		the frequency to use. For an n:m carrier-modulator frequency
+		ratio, a value of the form (m/n) may be used; e.g., for a
+		3:4 frequency ratio, "r(4/3)".
+			"Value ramp" values are supported; see section.
+			"Modulation with value range" is supported for FM
+		(frequency modulation); see section.
+	a	Amplitude, where 1.0 corresponds to a level of 0dB and
+		0.0 is silence. (Note that the final output level is scaled
+		down by the number of voices; alternatively, the S "a" option
+		can be used to set a multiplier used when adding a top-level
+		carrier. Panning will further reduce output level unless
+		fully left or right.) Can be negative to flip sign of result.
+			"Value ramp" values are supported; see section.
+			"Modulation with value range" is supported for AM
+		(amplitude modulation); see section.
+	p	Set the phase of the wave, and/or PM (phase modulation)
+		modulators to use.
+			A value modulo 1.0 is used to set phase as a
+		percentage of the wave cycle. For example, p(3/4) will move
+		a sine or triangle wave to its "bottom". This is mostly
+		useful for changing the initial phase.
+			After a value or by itself, "+[]" (plus and square
+		brackets) can be used to set a list of modulator operators
+		specified within the "[]"; the list replaces any previous
+		modulators set, and may be empty.
+			The sum of modulator amplitudes is used to
+		phase-modulate the carrier(s).
+	s	Silent time before playing, time in seconds.
+			Works like adding a delay, except it only affects this
+		operator.
+	w	Set the wave type. See list of wave types for values.
+	c	Channel mixing; see "Channel mixing values".
+		"Value ramp" values are supported; see section.
+
+Values and expressions
+----------------------
+
+Whitespace is not allowed within multi-character names, keywords or
+numbers, and separates values. Spaces and tabs may otherwise be used or
+omitted anywhere.
+
+Comment syntax:
+	"//" (C++-comment) comments out the rest of the line.
+	"/*" (C-comment) comments out text until after the next "*/".
+	"#!" (Shebang) comments out the rest of the line.
+	"#Q" (Quit file) comments out the rest of the whole file.
+
+Numerical expressions are allowed within parentheses, allowing numbers
+to be specified using basic arithmetic and freely placed whitespace.
+
+Value ramp:
+	To ramp or "sweep" a parameter which supports this towards a
+	target value, the following sub-parameters can be given values
+	within "{}" (curly brackets):
+	v	Target value.
+	t	Time to reach target value (default re-use time duration).
+	c	Ramp curve type (default 'lin'):
+			hold	Hold old value until time.
+			lin	Linear trajectory over time.
+			exp	Exponential trajectory over time.
+			log	A "log(1 + x)" trajectory over time.
+			esd	Exponentially saturate or decay.
+			lsd	Logarithmically saturate or decay.
+		(The 'exp' and 'log' types use ear-tuned polynomial
+		approximations with definite beginnings and ends,
+		designed to sound natural, and symmetric one to another.
+		The 'esd' increases like 'log' and decreases like 'exp',
+		like a capacitor, natural-sounding for envelope-like use.
+		The 'lsd' increases like 'exp' and decreases like 'log'.)
+
+Modulation with value range:
+	Amplitude and frequency (absolute or relative) parameters support
+	AM or FM, respectively, with a value range.
+		Following the letter specifying the parameter, and optionally
+	the normal value, a second value can be specified after a "," (comma)
+	for a bounded range of values from the modulation.
+		After value(s) or by itself, "~[]" (tilde and square brackets)
+	can be used to set a list of modulator operators specified within the
+	"[]"; the list replaces any previous modulators set, and may be empty.
+		Each such modulator will produce a result in a 0.0 to 1.0
+	range, i.e. a positive signal, multiplied by its amplitude parameter
+	(defaulting to 1.0).
+		The product of modulator amplitudes is mapped to the value
+	range; 0.0 means the normal value and 1.0 means the second value.
+	Setting (changing) the amplitude for modulators may thus change
+	the range, but is allowed for the sake of flexibility.
+
+Parameters and operator binding:
+	When specifying or referencing operators within "@[...]", any
+	parameters set following the closing ']' will be bound to and apply
+	to all of them.
+		Significantly, this allows multiple carriers (given within
+	the []) to be linked to the same modulator(s), whether for FM, PM,
+	or AM. (Note: Support for this is experimental and incomplete.)
+
+Labels and referencing:
+	Any operator when specified may be prefixed by "'label " in order
+	to define a label for it, where the label consists of alphanumeric
+	characters and/or '_'; thereafter the label can be referenced using
+	"@label", to place future changes later in the script.
+		Note that a "@label" reference placed in a nesting scope
+	different from the original does not add the operator to the new
+	nesting scope. (It will not be moved out from nor into a list by
+	being referenced anywhere.) The time scope is however new and of
+	the reference.
+
+Frequencies as notes:
+	Frequency values may be specified as notes. Currently, justly
+	intoned C-major scale is supported; "S n" sets the A4 tuning
+	(default 444Hz).
+		The value consists of the note (C, D, E, F, G, A or B),
+	optionally given a prefix and/or suffix. The prefix is an optional
+	subnote (c, d, e, f, g, a or b) inside an inner octave (between
+	note and next note). The suffix is an optional s (sharp) or
+	f (flat), and/or, in the last position, an octave number
+	(from 0-10, default 4).
+
+Timing
+------
+
+A new event terminates the previous one, but they will have the same
+placement in time unless a delay is added.
+
+At the topmost script scope, newlines also terminate events; within
+sub-scopes, however, newlines may be placed freely.
+
+Timing modifiers:
+	|	Time separator. Delays what follows by the duration of
+		prior events. This is independent of delay added
+		with "\".
+	\	Delay the next event and all following ones, time in
+		seconds. Alternatively, \t will delay by the time of the
+		last event.
+
+Composite events:
+	Writing a ';' (on a new line or the same line) after an event will
+	allow specifying new parameter arguments to apply at the end of the
+	previous duration; this can be repeated.
+		This makes it possible to write a sequence of events as if
+	a single "composite event", not having to insert delays that affect
+	the timing of events later written, thus increasing the flexibility
+	of how changes to operators may be positioned in a script.

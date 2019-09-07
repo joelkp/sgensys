@@ -8,6 +8,7 @@ LFLAGS_SNDIO=$(LFLAGS) -lsndio
 LFLAGS_OSSAUDIO=$(LFLAGS) -lossaudio
 PREFIX=/usr/local
 BIN=saugns
+MAN1=saugns.1
 SHARE=saugns
 OBJ=\
 	common.o \
@@ -50,13 +51,47 @@ clean:
 	rm -f $(OBJ) $(BIN)
 	rm -f $(TEST1_OBJ) test-scan
 install: $(BIN)
+	@if [ -d "$(DESTDIR)$(PREFIX)/man" ]; then \
+		MANDIR="man"; \
+	else \
+		MANDIR="share/man"; \
+	fi; \
+	echo "Installing man page under $(DESTDIR)$(PREFIX)/$$MANDIR."; \
+	if [ -d "/usr/share/man" ]; then \
+		for f in "/usr/share/man/man"?/*.gz; do \
+			[ -e "$$f" ] && USE_GZIP=yes || USE_GZIP=; break; \
+		done; \
+	else \
+		for f in "$(DESTDIR)$(PREFIX)/$$MANDIR/man"?/*.gz; do \
+			[ -e "$$f" ] && USE_GZIP=yes || USE_GZIP=; break; \
+		done; \
+	fi; \
+	mkdir -p $(DESTDIR)$(PREFIX)/$$MANDIR/man1; \
+	if [ $$USE_GZIP ]; then \
+		echo "(Gzip man pages? 'Yes', quick look says.)"; \
+		gzip < man/$(MAN1) > $(DESTDIR)$(PREFIX)/$$MANDIR/man1/$(MAN1).gz; \
+	else \
+		echo "(Gzip man pages? 'No', quick look says.)"; \
+		cp -f man/$(MAN1) $(DESTDIR)$(PREFIX)/$$MANDIR/man1; \
+	fi; \
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	mkdir -p $(DESTDIR)$(PREFIX)/share/$(SHARE)
+	mkdir -p $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
+	mkdir -p $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
 	cp -f $(BIN) $(DESTDIR)$(PREFIX)/bin
-	cp -RP examples/* $(DESTDIR)$(PREFIX)/share/$(SHARE)
+	cp -RP doc/* $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
+	cp -RP examples/* $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
 uninstall:
+	@if [ -d "$(DESTDIR)$(PREFIX)/man" ]; then \
+		MANDIR="man"; \
+	else \
+		MANDIR="share/man"; \
+	fi; \
+	echo "Uninstalling man page under $(DESTDIR)$(PREFIX)/$$MANDIR."; \
+	rm -f $(DESTDIR)$(PREFIX)/$$MANDIR/man1/$(MAN1).gz \
+		$(DESTDIR)$(PREFIX)/$$MANDIR/man1/$(MAN1)
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(BIN)
-	rm -Rf $(DESTDIR)$(PREFIX)/share/$(SHARE)
+	rm -Rf $(DESTDIR)$(PREFIX)/share/doc/$(SHARE)
+	rm -Rf $(DESTDIR)$(PREFIX)/share/examples/$(SHARE)
 
 $(BIN): $(OBJ)
 	@UNAME="`uname -s`"; \
