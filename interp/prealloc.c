@@ -27,7 +27,7 @@ static bool init_events(SSG_PreAlloc *restrict o) {
 	const SSG_Program *prg = o->prg;
 	uint32_t vo_wait_time = 0;
 	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *prg_e = &prg->events[i];
+		const SSG_ProgramEvent *prg_e = prg->events[i];
 		EventNode *e = SSG_MemPool_alloc(o->mem, sizeof(EventNode));
 		if (!e)
 			return false;

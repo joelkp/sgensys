@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "parseconv.h"
+#include "scriptconv.h"
 
 /*
  * Traverse parts of voice operator graph reached from operator node,

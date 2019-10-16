@@ -19,11 +19,12 @@
  * Script data operator flags.
  */
 enum {
-	SSG_SDOP_LATER_USED = 1<<0,
-	SSG_SDOP_MULTIPLE = 1<<1,
-	SSG_SDOP_NESTED = 1<<2,
-	SSG_SDOP_SILENCE_ADDED = 1<<3,
-	SSG_SDOP_HAS_COMPOSITE = 1<<4,
+	SSG_SDOP_NEW_CARRIER = 1<<0,
+	SSG_SDOP_LATER_USED = 1<<1,
+	SSG_SDOP_MULTIPLE = 1<<2,
+	SSG_SDOP_NESTED = 1<<3,
+	SSG_SDOP_SILENCE_ADDED = 1<<4,
+	SSG_SDOP_HAS_COMPOSITE = 1<<5,
 };
 
 /**
@@ -31,13 +32,11 @@ enum {
  */
 typedef struct SSG_ScriptOpData {
 	struct SSG_ScriptEvData *event;
-	struct SSG_ScriptOpData *on_prev; /* preceding for same op(s) */
-	SSG_PtrList on_next; /* all immediate forward refs for op(s) */
 	struct SSG_ScriptOpData *next_bound;
 	const char *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t op_id; /* not used by parser; for program module */
+	uint32_t op_id;
 	uint32_t op_params;
 	SSG_Time time;
 	uint32_t silence_ms;
@@ -45,6 +44,8 @@ typedef struct SSG_ScriptOpData {
 	SSG_Ramp freq, freq2;
 	SSG_Ramp amp, amp2;
 	float phase;
+	struct SSG_ScriptOpData *op_prev; /* preceding for same op(s) */
+	SSG_PtrList op_next; /* all immediate forward refs for op(s) */
 	/* node adjacents in operator linkage graph */
 	SSG_PtrList fmods, pmods, amods;
 } SSG_ScriptOpData;
@@ -53,9 +54,9 @@ typedef struct SSG_ScriptOpData {
  * Script data event flags.
  */
 enum {
-	SSG_SDEV_VOICE_LATER_USED = 1<<0,
-	SSG_SDEV_ADD_WAIT_DURATION = 1<<1,
-	SSG_SDEV_NEW_OPGRAPH = 1<<2,
+	SSG_SDEV_NEW_OPGRAPH = 1<<0,
+	SSG_SDEV_VOICE_LATER_USED = 1<<1,
+	SSG_SDEV_ADD_WAIT_DURATION = 1<<2,
 };
 
 /**
@@ -64,15 +65,13 @@ enum {
  */
 typedef struct SSG_ScriptEvData {
 	struct SSG_ScriptEvData *next;
-	struct SSG_ScriptEvData *groupfrom;
-	struct SSG_ScriptEvData *composite;
 	uint32_t wait_ms;
-	SSG_PtrList operators; /* operators included in event */
 	uint32_t ev_flags;
+	SSG_PtrList op_all;
 	/* voice parameters */
-	uint32_t vo_id; /* not used by parser; for program module */
+	uint32_t vo_id;
 	uint32_t vo_params;
-	struct SSG_ScriptEvData *voice_prev; /* preceding event for voice */
+	struct SSG_ScriptEvData *vo_prev; /* preceding event for voice */
 	SSG_Ramp pan;
 	SSG_PtrList op_graph;
 } SSG_ScriptEvData;
