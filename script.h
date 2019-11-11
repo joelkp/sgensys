@@ -37,7 +37,6 @@ typedef struct SSG_ScriptOpData {
 	struct SSG_ScriptEvData *event;
 	struct SSG_ScriptOpData *next_bound;
 	struct SSG_ScriptOpData *prev_use, *next_use; /* for same op(s) */
-	const char *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_id; // for scriptconv

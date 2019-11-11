@@ -1,0 +1,8 @@
+// Each tone below has a time duration of 2 seconds, as it,
+// being the longest used, becomes the default. (The '|' is
+// optional, as nothing follows it, but nothing after would
+// affect default times before it.)
+Osin f400
+Osin f300 t2
+Osin f600
+|

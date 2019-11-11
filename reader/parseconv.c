@@ -22,17 +22,17 @@
  */
 
 /*
- * Adjust timing for event groupings; the script syntax for time grouping is
+ * Adjust timing for a duration group; the script syntax for time grouping is
  * only allowed on the "top" operator level, so the algorithm only deals with
  * this for the events involved.
  */
-static void group_events(SSG_ParseEvData *restrict to) {
-	SSG_ParseEvData *e, *e_after = to->next;
+static void time_durgroup(SSG_ParseEvData *restrict e_last) {
+	SSG_ParseDurGroup *dur = e_last->dur;
+	SSG_ParseEvData *e, *e_after = e_last->next;
 	uint32_t wait = 0, waitcount = 0;
-	for (e = to->groupfrom; e != e_after; ) {
-		SSG_ParseOpData *op;
-		op = e->operators.first;
-		for (; op != NULL; op = op->range_next) {
+	for (e = dur->range.first; e != e_after; ) {
+		for (SSG_ParseOpData *op = e->operators.first;
+				op != NULL; op = op->range_next) {
 			if (wait < op->time.v_ms)
 				wait = op->time.v_ms;
 		}
@@ -41,10 +41,9 @@ static void group_events(SSG_ParseEvData *restrict to) {
 			waitcount += e->wait_ms;
 		}
 	}
-	for (e = to->groupfrom; e != e_after; ) {
-		SSG_ParseOpData *op;
-		op = e->operators.first;
-		for (; op != NULL; op = op->range_next) {
+	for (e = dur->range.first; e != e_after; ) {
+		for (SSG_ParseOpData *op = e->operators.first;
+				op != NULL; op = op->range_next) {
 			if (!(op->time.flags & SSG_TIMEP_SET)) {
 				/* fill in sensible default time */
 				op->time.v_ms = wait + waitcount;
@@ -56,7 +55,6 @@ static void group_events(SSG_ParseEvData *restrict to) {
 			waitcount -= e->wait_ms;
 		}
 	}
-	to->groupfrom = NULL;
 	if (e_after != NULL)
 		e_after->wait_ms += wait;
 }
@@ -282,7 +280,6 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	pod->op_conv = od;
 	od->event = e;
 	/* next_bound */
-	/* label */
 	/* op_flags */
 	od->op_params = pod->op_params;
 	od->time = pod->time;
@@ -420,7 +417,7 @@ ERROR:
 
 /*
  * Convert parser output to script data, performing
- * post-parsing passes - perform timing adjustments,
+ * post-parsing passes. Perform timing adjustments,
  * flatten event list.
  *
  * Ideally, adjustments of parse data would be
@@ -431,10 +428,10 @@ static SSG_Script *ParseConv_convert(ParseConv *restrict o,
 	SSG_ParseEvData *pe;
 	for (pe = p->events; pe != NULL; pe = pe->next) {
 		time_event(pe);
-		if (pe->groupfrom != NULL) group_events(pe);
+		if (pe == pe->dur->range.last) time_durgroup(pe);
 	}
 	o->mem = SSG_create_MemPool(0);
-	o->tmp = SSG_create_MemPool(0);
+	o->tmp = p->mem;
 	if (!o->mem || !o->tmp) goto ERROR;
 	SSG_Script *s = SSG_MemPool_alloc(o->mem, sizeof(SSG_Script));
 	if (!s) goto ERROR;
@@ -457,7 +454,6 @@ static SSG_Script *ParseConv_convert(ParseConv *restrict o,
 		SSG_error("parseconv", "memory allocation failure");
 		s = NULL;
 	}
-	SSG_destroy_MemPool(o->tmp);
 	return s;
 }
 

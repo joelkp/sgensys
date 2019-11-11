@@ -25,6 +25,18 @@ typedef struct SSG_ParseSublist {
 } SSG_ParseSublist;
 
 /**
+ * Linked list of duration groupings of nodes.
+ *
+ * Each event links to the duration node range
+ * used to calculate duration and default time
+ * for that piece of the script.
+ */
+typedef struct SSG_ParseDurGroup {
+	SSG_NodeRange range;
+	struct SSG_ParseDurGroup *next;
+} SSG_ParseDurGroup;
+
+/**
  * Parse data operator flags.
  */
 enum {
@@ -74,8 +86,8 @@ enum {
  */
 typedef struct SSG_ParseEvData {
 	struct SSG_ParseEvData *next;
-	struct SSG_ParseEvData *groupfrom;
 	struct SSG_ParseEvData *composite;
+	SSG_ParseDurGroup *dur;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
 	SSG_NodeRange operators; /* operator nodes directly linked from event */
@@ -95,6 +107,8 @@ typedef struct SSG_Parse {
 	SSG_ParseEvData *events;
 	const char *name; // currently simply set to the filename
 	SSG_ScriptOptions sopt;
+	SSG_SymTab *symtab;
+	SSG_MemPool *mem; // internally used, provided until destroy
 } SSG_Parse;
 
 SSG_Parse *SSG_create_Parse(const char *restrict script_arg, bool is_path);

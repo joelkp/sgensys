@@ -15,7 +15,6 @@
 #include "parser.h"
 #include "../math.h"
 #include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
 
 /*
@@ -484,6 +483,7 @@ typedef struct SSG_Parser {
 	uint32_t call_level;
 	/* node state */
 	SSG_ParseEvData *ev, *first_ev;
+	SSG_ParseDurGroup *cur_dur;
 } SSG_Parser;
 
 /*
@@ -515,7 +515,6 @@ static bool init_Parser(SSG_Parser *restrict o) {
 	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
 	sc->data = &o->sl;
 	return true;
-
 ERROR:
 	fini_Parser(o);
 	return false;
@@ -565,7 +564,6 @@ struct ParseLevel {
 	SSG_ParseSublist *op_scope;
 	SSG_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
-	SSG_ParseEvData *group_from; /* where to begin for group_events() */
 	SSG_ParseEvData *composite; /* grouping of events for a voice and/or operator */
 	uint32_t next_wait_ms; /* added for next event */
 };
@@ -594,43 +592,22 @@ static bool parse_waittime(ParseLevel *restrict pl) {
  * Node- and scope-handling functions
  */
 
-/*
- * Destroy the given operator data node.
- */
-static void destroy_operator(SSG_ParseOpData *restrict op) {
-	SSG_ParseOpData *sub_op, *sub_op_next;
-	SSG_ParseSublist *scope = op->nest_scopes, *scope_next;
-	for (; scope != NULL; scope = scope_next) {
-		scope_next = scope->next;
-		sub_op = scope->range.first;
-		for (; sub_op != NULL; sub_op = sub_op_next) {
-			sub_op_next = sub_op->range_next;
-			destroy_operator(sub_op);
-		}
-		free(scope);
-	}
-	free(op);
-}
-
-/*
- * Destroy the given event data node and all associated operator data nodes.
- */
-static void destroy_event_node(SSG_ParseEvData *restrict e) {
-	SSG_ParseOpData *op, *op_next;
-	op = e->operators.first;
-	for (; op != NULL; op = op_next) {
-		op_next = op->range_next;
-		destroy_operator(op);
-	}
-	free(e);
-}
-
-static SSG_ParseSublist *create_op_scope(uint8_t use_type) {
-	SSG_ParseSublist *o = calloc(1, sizeof(SSG_ParseSublist));
+static SSG_ParseSublist *create_op_scope(uint8_t use_type,
+		SSG_MemPool *restrict memp) {
+	SSG_ParseSublist *o = SSG_MemPool_alloc(memp, sizeof(SSG_ParseSublist));
 	if (!o)
 		return NULL;
 	o->use_type = use_type;
 	return o;
+}
+
+static SSG__noinline void new_durgroup(ParseLevel *restrict pl) {
+	SSG_Parser *o = pl->o;
+	SSG_ParseDurGroup *dur = SSG_MemPool_alloc(o->mp,
+			sizeof(SSG_ParseDurGroup));
+	if (o->cur_dur != NULL)
+		o->cur_dur->next = dur;
+	o->cur_dur = dur;
 }
 
 static SSG__noinline void end_operator(ParseLevel *restrict pl) {
@@ -667,6 +644,7 @@ static SSG__noinline void end_event(ParseLevel *restrict pl) {
 	if (!(pl->pl_flags & PL_ACTIVE_EV))
 		return;
 	pl->pl_flags &= ~PL_ACTIVE_EV;
+	SSG_Parser *o = pl->o;
 	SSG_ParseEvData *e = pl->event;
 	end_operator(pl);
 	SSG_ParseEvData *pve = e->vo_prev;
@@ -676,6 +654,10 @@ static SSG__noinline void end_event(ParseLevel *restrict pl) {
 		 */
 		e->vo_params |= SSG_PVO_PARAMS & ~SSG_PVOP_GRAPH;
 	}
+	SSG_ParseDurGroup *dur = o->cur_dur;
+	if (!dur->range.first)
+		dur->range.first = e;
+	dur->range.last = (pl->composite != NULL) ? pl->composite : e;
 	pl->last_event = e;
 	pl->event = NULL;
 }
@@ -684,10 +666,10 @@ static void begin_event(ParseLevel *restrict pl,
 		bool is_composite) {
 	SSG_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
-	SSG_ParseEvData *e;
 	end_event(pl);
-	pl->event = calloc(1, sizeof(SSG_ParseEvData));
-	e = pl->event;
+	SSG_ParseEvData *e = SSG_MemPool_alloc(o->mp, sizeof(SSG_ParseEvData));
+	pl->event = e;
+	e->dur = o->cur_dur;
 	e->wait_ms = pl->next_wait_ms;
 	pl->next_wait_ms = 0;
 	SSG_Ramp_reset(&e->pan);
@@ -709,8 +691,6 @@ static void begin_event(ParseLevel *restrict pl,
 		e->pan.v0 = sl->sopt.def_chanmix;
 		e->pan.flags |= SSG_RAMPP_STATE;
 	}
-	if (!pl->group_from)
-		pl->group_from = e;
 	if (!is_composite) {
 		if (!o->first_ev)
 			o->first_ev = e;
@@ -727,13 +707,13 @@ static void begin_operator(ParseLevel *restrict pl,
 	SSG_Parser *o = pl->o;
 	ScanLookup *sl = &o->sl;
 	SSG_ParseEvData *e = pl->event;
-	SSG_ParseOpData *op, *pop = pl->op_prev;
+	SSG_ParseOpData *pop = pl->op_prev;
 	/*
 	 * It is assumed that a valid voice event exists.
 	 */
 	end_operator(pl);
-	pl->operator = calloc(1, sizeof(SSG_ParseOpData));
-	op = pl->operator;
+	SSG_ParseOpData *op = SSG_MemPool_alloc(o->mp, sizeof(SSG_ParseOpData));
+	pl->operator = op;
 	if (!pl->first_operator)
 		pl->first_operator = op;
 	if (!is_composite && pl->last_operator != NULL)
@@ -841,8 +821,10 @@ static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
 	pl->scope = newscope;
 	if (!parent_pl) {
 		// handle newscope == SCOPE_TOP here
-		if (use_type != SSG_POP_CARR)
-			pl->op_scope = create_op_scope(use_type);
+		if (!o->cur_dur) new_durgroup(pl);
+		if (use_type != SSG_POP_CARR) {
+			pl->op_scope = create_op_scope(use_type, o->mp);
+		}
 		return;
 	}
 	pl->parent = parent_pl;
@@ -854,17 +836,15 @@ static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
 	pl->parent_op = parent_pl->parent_op;
 	switch (newscope) {
 	case SCOPE_BLOCK:
-		pl->group_from = parent_pl->group_from;
 		pl->op_scope = parent_pl->op_scope;
 		break;
 	case SCOPE_BIND:
-		pl->group_from = parent_pl->group_from;
-		pl->op_scope = create_op_scope(use_type);
+		pl->op_scope = create_op_scope(use_type, o->mp);
 		break;
 	case SCOPE_NEST:
 		pl->pl_flags |= PL_NESTED_SCOPE;
 		pl->parent_op = parent_pl->operator;
-		pl->op_scope = create_op_scope(use_type);
+		pl->op_scope = create_op_scope(use_type, o->mp);
 		break;
 	default:
 		break;
@@ -879,20 +859,14 @@ static void end_scope(ParseLevel *restrict pl) {
 				"ignoring label assignment without operator");
 	}
 	switch (pl->scope) {
-	case SCOPE_TOP: {
+	case SCOPE_TOP:
 		/*
 		 * At end of top scope, i.e. at end of script,
 		 * end last event and adjust timing.
 		 */
-		SSG_ParseEvData *group_to;
 		end_event(pl);
-		group_to = (pl->composite) ? pl->composite : pl->last_event;
-		if (group_to)
-			group_to->groupfrom = pl->group_from;
-		break; }
+		break;
 	case SCOPE_BLOCK:
-		if (!pl->parent->group_from)
-			pl->parent->group_from = pl->group_from;
 		if (pl->pl_flags & PL_ACTIVE_EV) {
 			end_event(pl->parent);
 			pl->parent->pl_flags |= PL_ACTIVE_EV;
@@ -902,8 +876,6 @@ static void end_scope(ParseLevel *restrict pl) {
 			pl->parent->last_event = pl->last_event;
 		break;
 	case SCOPE_BIND:
-		if (!pl->parent->group_from)
-			pl->parent->group_from = pl->group_from;
 		/*
 		 * Begin multiple-operator node in parent scope
 		 * for the operator nodes in this scope,
@@ -1055,6 +1027,10 @@ static void parse_in_event(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	SSG_Scanner *sc = o->sc;
 	SSG_ParseOpData *op = pl->operator;
+	if (!op) {
+		SSG_error("parser", "parse_in_event() called for a NULLity");
+		return;
+	}
 	pl->sub_f = parse_in_event;
 	uint8_t c;
 	for (;;) {
@@ -1244,19 +1220,13 @@ static void parse_level(SSG_Parser *restrict o,
 					((pl.pl_flags & PL_NESTED_SCOPE) != 0
 					&& pl.event != NULL))
 				goto INVALID;
-			if (!pl.event) {
+			end_event(&pl);
+			if (!o->cur_dur->range.first) {
 				SSG_Scanner_warning(sc, NULL,
 "no sounds precede time separator");
 				break;
 			}
-			if (pl.group_from != NULL) {
-				SSG_ParseEvData *group_to = (pl.composite) ?
-					pl.composite :
-					pl.event;
-				group_to->groupfrom = pl.group_from;
-				pl.group_from = NULL;
-			}
-			end_event(&pl);
+			new_durgroup(&pl);
 			pl.sub_f = NULL;
 			break;
 		case '}':
@@ -1310,15 +1280,20 @@ SSG_Parse* SSG_create_Parse(const char *restrict script_arg, bool is_path) {
 	if (!script_arg)
 		return NULL;
 	SSG_Parser pr;
+	if (!init_Parser(&pr))
+		return NULL;
 	SSG_Parse *o = NULL;
-	init_Parser(&pr);
 	const char *name = parse_file(&pr, script_arg, is_path);
 	if (!name) goto DONE;
 
-	o = calloc(1, sizeof(SSG_Parse));
+	o = SSG_MemPool_alloc(pr.mp, sizeof(SSG_Parse));
 	o->events = pr.first_ev;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
+	o->symtab = pr.st;
+	o->mem = pr.mp;
+	pr.st = NULL; // keep for result
+	pr.mp = NULL; // keep for result
 DONE:
 	fini_Parser(&pr);
 	return o;
@@ -1330,11 +1305,6 @@ DONE:
 void SSG_destroy_Parse(SSG_Parse *restrict o) {
 	if (!o)
 		return;
-	SSG_ParseEvData *e;
-	for (e = o->events; e != NULL; ) {
-		SSG_ParseEvData *e_next = e->next;
-		destroy_event_node(e);
-		e = e_next;
-	}
-	free(o);
+	SSG_destroy_SymTab(o->symtab);
+	SSG_destroy_MemPool(o->mem);
 }
