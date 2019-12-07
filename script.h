@@ -26,12 +26,7 @@ typedef struct SSG_NodeRange {
  * Script data operator flags.
  */
 enum {
-	SSG_SDOP_NEW_CARRIER = 1<<0,
-	SSG_SDOP_LATER_USED = 1<<1,
-	SSG_SDOP_MULTIPLE = 1<<2,
-	SSG_SDOP_NESTED = 1<<3,
-	SSG_SDOP_SILENCE_ADDED = 1<<4,
-	SSG_SDOP_HAS_COMPOSITE = 1<<5,
+	SSG_SDOP_ADD_CARRIER = 1<<0,
 };
 
 /**
@@ -41,7 +36,7 @@ typedef struct SSG_ScriptOpData {
 	struct SSG_ScriptOpData *range_next;
 	struct SSG_ScriptEvData *event;
 	struct SSG_ScriptOpData *next_bound;
-	struct SSG_ScriptOpData *prev_use; /* for same op(s) */
+	struct SSG_ScriptOpData *prev_use, *next_use; /* for same op(s) */
 	const char *label;
 	uint32_t op_flags;
 	/* operator parameters */
@@ -62,8 +57,6 @@ typedef struct SSG_ScriptOpData {
  */
 enum {
 	SSG_SDEV_NEW_OPGRAPH = 1<<0,
-	SSG_SDEV_VOICE_LATER_USED = 1<<1,
-	SSG_SDEV_ADD_WAIT_DURATION = 1<<2,
 };
 
 /**
@@ -78,7 +71,7 @@ typedef struct SSG_ScriptEvData {
 	/* voice parameters */
 	uint32_t vo_id;
 	uint32_t vo_params;
-	struct SSG_ScriptEvData *vo_prev; /* preceding event for voice */
+	struct SSG_ScriptEvData *prev_vo_use, *next_vo_use; /* for same voice */
 	SSG_Ramp pan;
 	SSG_RefList *carriers;
 } SSG_ScriptEvData;

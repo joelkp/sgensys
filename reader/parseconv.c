@@ -69,9 +69,9 @@ static inline void time_ramp(SSG_Ramp *restrict ramp,
 
 static void time_operator(SSG_ParseOpData *restrict op) {
 	SSG_ParseEvData *e = op->event;
-	if ((op->op_flags & SSG_SDOP_NESTED) != 0 &&
+	if ((op->op_flags & SSG_PDOP_NESTED) != 0 &&
 			!(op->time.flags & SSG_TIMEP_SET)) {
-		if (!(op->op_flags & SSG_SDOP_HAS_COMPOSITE))
+		if (!(op->op_flags & SSG_PDOP_HAS_COMPOSITE))
 			op->time.flags |= SSG_TIMEP_LINKED;
 		op->time.flags |= SSG_TIMEP_SET;
 	}
@@ -80,15 +80,15 @@ static void time_operator(SSG_ParseOpData *restrict op) {
 		time_ramp(&op->freq2, op->time.v_ms);
 		time_ramp(&op->amp, op->time.v_ms);
 		time_ramp(&op->amp2, op->time.v_ms);
-		if (!(op->op_flags & SSG_SDOP_SILENCE_ADDED)) {
+		if (!(op->op_flags & SSG_PDOP_SILENCE_ADDED)) {
 			op->time.v_ms += op->silence_ms;
-			op->op_flags |= SSG_SDOP_SILENCE_ADDED;
+			op->op_flags |= SSG_PDOP_SILENCE_ADDED;
 		}
 	}
-	if ((e->ev_flags & SSG_SDEV_ADD_WAIT_DURATION) != 0) {
+	if ((e->ev_flags & SSG_PDEV_ADD_WAIT_DURATION) != 0) {
 		if (e->next != NULL)
 			e->next->wait_ms += op->time.v_ms;
-		e->ev_flags &= ~SSG_SDEV_ADD_WAIT_DURATION;
+		e->ev_flags &= ~SSG_PDEV_ADD_WAIT_DURATION;
 	}
 	for (SSG_ParseSublist *scope = op->nest_scopes;
 			scope != NULL; scope = scope->next) {
@@ -117,7 +117,7 @@ static void time_event(SSG_ParseEvData *restrict e) {
 		SSG_ParseEvData *ce = e->composite;
 		SSG_ParseOpData *ce_op, *ce_op_prev, *e_op;
 		ce_op = ce->operators.first;
-		ce_op_prev = ce_op->op_prev;
+		ce_op_prev = ce_op->prev;
 		e_op = ce_op_prev;
 		e_op->time.flags |= SSG_TIMEP_SET; /* always used from now on */
 		for (;;) {
@@ -125,7 +125,7 @@ static void time_event(SSG_ParseEvData *restrict e) {
 			if (!(ce_op->time.flags & SSG_TIMEP_SET)) {
 				ce_op->time.flags |= SSG_TIMEP_SET;
 				if ((ce_op->op_flags &
-(SSG_SDOP_NESTED | SSG_SDOP_HAS_COMPOSITE)) == SSG_SDOP_NESTED)
+(SSG_PDOP_NESTED | SSG_PDOP_HAS_COMPOSITE)) == SSG_PDOP_NESTED)
 					ce_op->time.flags |= SSG_TIMEP_LINKED;
 				else
 					ce_op->time.v_ms = ce_op_prev->time.v_ms
@@ -207,8 +207,67 @@ static void flatten_events(SSG_ParseEvData *restrict e) {
 
 typedef struct ParseConv {
 	SSG_ScriptEvData *ev, *first_ev;
-	SSG_MemPool *mem;
+	SSG_MemPool *mem, *tmp;
 } ParseConv;
+
+/*
+ * Per-operator data pointed to by all its nodes during conversion.
+ */
+typedef struct OpContext {
+	SSG_ParseOpData *last_use;
+} OpContext;
+
+/*
+ * Get operator context for node, updating associated data.
+ *
+ * If the node is ignored, the SSG_PDOP_IGNORED flag is set
+ * before returning NULL. A NULL context means either error
+ * or an ignored node.
+ *
+ * \return instance, or NULL on allocation failure or ignored node
+ */
+static OpContext *ParseConv_update_opcontext(ParseConv *restrict o,
+		SSG_ScriptOpData *restrict od,
+		SSG_ParseOpData *restrict pod) {
+	OpContext *oc = NULL;
+	if (!pod->prev) {
+		oc = SSG_MemPool_alloc(o->tmp, sizeof(OpContext));
+		if (!oc)
+			return NULL;
+		if (pod->use_type == SSG_POP_CARR) {
+			SSG_ScriptEvData *e = o->ev;
+			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
+			od->op_flags |= SSG_SDOP_ADD_CARRIER;
+		}
+	} else {
+		oc = pod->prev->op_context;
+		if (!oc) {
+			/*
+			 * This can happen if earlier nodes were excluded,
+			 * in which case all follow-ons nodes will also be
+			 * ignored.
+			 */
+			pod->op_flags |= SSG_PDOP_IGNORED;
+			return NULL;
+		}
+		if (pod->use_type == SSG_POP_CARR) {
+			od->op_flags |= SSG_SDOP_ADD_CARRIER;
+		}
+		SSG_ScriptOpData *prev_use = oc->last_use->op_conv;
+		od->prev_use = prev_use;
+		prev_use->next_use = od;
+	}
+	oc->last_use = pod;
+	pod->op_context = oc;
+	return oc;
+}
+
+/*
+ * Per-voice data pointed to by all its nodes during conversion.
+ */
+typedef struct VoContext {
+	SSG_ParseEvData *last_vo_use;
+} VoContext;
 
 /*
  * Convert data for an operator node to script operator data,
@@ -218,14 +277,13 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 		SSG_ParseOpData *restrict pod) {
 	SSG_ScriptOpData *od = SSG_MemPool_alloc(o->mem,
 			sizeof(SSG_ScriptOpData));
-	if (!od)
-		return false;
+	if (!od) goto ERROR;
 	SSG_ScriptEvData *e = o->ev;
 	pod->op_conv = od;
 	od->event = e;
 	/* next_bound */
 	/* label */
-	od->op_flags = pod->op_flags;
+	/* op_flags */
 	od->op_params = pod->op_params;
 	od->time = pod->time;
 	od->silence_ms = pod->silence_ms;
@@ -235,22 +293,15 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->amp = pod->amp;
 	od->amp2 = pod->amp2;
 	od->phase = pod->phase;
-	if (pod->op_prev != NULL) {
-		od->prev_use = pod->op_prev->op_conv;
-	} else {
-		if (pod->use_type == SSG_POP_CARR) {
-			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
-			od->op_flags |= SSG_SDOP_NEW_CARRIER;
-		}
-	}
+	if (!ParseConv_update_opcontext(o, od, pod)) goto ERROR;
 	if (!e->op_all.first)
 		e->op_all.first = od;
 	else
 		((SSG_ScriptOpData*) e->op_all.last)->range_next = od;
 	e->op_all.last = od;
 	return true;
-//ERROR:
-//	return false;
+ERROR:
+	return false;
 }
 
 /*
@@ -264,8 +315,15 @@ static bool ParseConv_add_ops(ParseConv *restrict o,
 	SSG_ParseOpData *pod = pod_list->first;
 	for (; pod != NULL; pod = pod->range_next) {
 		// TODO: handle multiple operator nodes
-		if (pod->op_flags & SSG_SDOP_MULTIPLE) continue;
-		if (!ParseConv_add_opdata(o, pod)) goto ERROR;
+		if (pod->op_flags & SSG_PDOP_MULTIPLE) {
+			// TODO: handle multiple operator nodes
+			pod->op_flags |= SSG_PDOP_IGNORED;
+			continue;
+		}
+		if (!ParseConv_add_opdata(o, pod)) {
+			if (pod->op_flags & SSG_PDOP_IGNORED) continue;
+			goto ERROR;
+		}
 		for (SSG_ParseSublist *scope = pod->nest_scopes;
 				scope != NULL; scope = scope->next) {
 			if (!ParseConv_add_ops(o, &scope->range)) goto ERROR;
@@ -286,19 +344,20 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		uint8_t list_type) {
 	if (!pod_list)
 		return true;
+	SSG_ScriptEvData *e = o->ev;
 	if (list_type != SSG_POP_CARR ||
-			(o->ev->ev_flags & SSG_SDEV_NEW_OPGRAPH) != 0) {
+			(e->ev_flags & SSG_SDEV_NEW_OPGRAPH) != 0) {
 		*od_list = SSG_create_RefList(list_type, o->mem);
 		if (!*od_list) goto ERROR;
 	}
 	SSG_ParseOpData *pod = pod_list->first;
 	for (; pod != NULL; pod = pod->range_next) {
-		// TODO: handle multiple operator nodes
-		if (pod->op_flags & SSG_SDOP_MULTIPLE) continue;
+		if (pod->op_flags & SSG_PDOP_IGNORED) continue;
 		SSG_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
 		if ((list_type != SSG_POP_CARR ||
-				 (od->op_flags & SSG_SDOP_NEW_CARRIER) != 0) &&
+				 ((e->ev_flags & SSG_SDEV_NEW_OPGRAPH) &&
+				  (od->op_flags & SSG_SDOP_ADD_CARRIER))) &&
 				!SSG_RefList_add(*od_list, od, 0, o->mem))
 			goto ERROR;
 		SSG_RefList *last_mod_list = NULL;
@@ -327,24 +386,29 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 		SSG_ParseEvData *restrict pe) {
 	SSG_ScriptEvData *e = SSG_MemPool_alloc(o->mem,
 			sizeof(SSG_ScriptEvData));
-	if (!e)
-		return false;
+	if (!e) goto ERROR;
 	pe->ev_conv = e;
 	if (!o->first_ev)
 		o->first_ev = e;
 	else
 		o->ev->next = e;
 	o->ev = e;
-	/* groupfrom */
-	/* composite */
 	e->wait_ms = pe->wait_ms;
-	e->ev_flags = pe->ev_flags;
-	e->vo_params = pe->vo_params;
-	if (pe->vo_prev != NULL) {
-		e->vo_prev = pe->vo_prev->ev_conv;
-	} else {
+	/* ev_flags */
+	VoContext *vc;
+	if (!pe->vo_prev) {
+		vc = SSG_MemPool_alloc(o->tmp, sizeof(VoContext));
+		if (!vc) goto ERROR;
 		e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
+	} else {
+		vc = pe->vo_prev->vo_context;
+		SSG_ScriptEvData *prev_vo_use = vc->last_vo_use->ev_conv;
+		e->prev_vo_use = prev_vo_use;
+		prev_vo_use->next_vo_use = e;
 	}
+	vc->last_vo_use = pe;
+	pe->vo_context = vc;
+	e->vo_params = pe->vo_params;
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->operators)) goto ERROR;
 	if (!ParseConv_link_ops(o, &e->carriers,
@@ -369,14 +433,14 @@ static SSG_Script *ParseConv_convert(ParseConv *restrict o,
 		time_event(pe);
 		if (pe->groupfrom != NULL) group_events(pe);
 	}
-	SSG_MemPool *mem = SSG_create_MemPool(0);
-	if (!mem) goto ERROR;
-	SSG_Script *s = SSG_MemPool_alloc(mem, sizeof(SSG_Script));
+	o->mem = SSG_create_MemPool(0);
+	o->tmp = SSG_create_MemPool(0);
+	if (!o->mem || !o->tmp) goto ERROR;
+	SSG_Script *s = SSG_MemPool_alloc(o->mem, sizeof(SSG_Script));
 	if (!s) goto ERROR;
 	s->name = p->name;
 	s->sopt = p->sopt;
-	s->mem = mem;
-	o->mem = mem;
+	s->mem = o->mem;
 	/*
 	 * Convert events, flattening the remaining list while proceeding.
 	 * Flattening must be done following the timing adjustment pass;
@@ -387,11 +451,14 @@ static SSG_Script *ParseConv_convert(ParseConv *restrict o,
 		if (pe->composite != NULL) flatten_events(pe);
 	}
 	s->events = o->first_ev;
+	if (false)
+	ERROR: {
+		SSG_destroy_MemPool(o->mem);
+		SSG_error("parseconv", "memory allocation failure");
+		s = NULL;
+	}
+	SSG_destroy_MemPool(o->tmp);
 	return s;
-ERROR:
-	SSG_destroy_MemPool(mem);
-	SSG_error("parseconv", "memory allocation failure");
-	return NULL;
 }
 
 /**

@@ -141,9 +141,9 @@ static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
 			const SSG_ProgramOpData *od = &prg_e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
-			if (od->fmods != NULL) on->fmods = od->fmods;
-			if (od->pmods != NULL) on->pmods = od->pmods;
-			if (od->amods != NULL) on->amods = od->amods;
+			on->fmods = od->fmods;
+			on->pmods = od->pmods;
+			on->amods = od->amods;
 			if (params & SSG_POPP_WAVE)
 				on->osc.lut = SSG_Osc_LUT(od->wave);
 			if (params & SSG_POPP_TIME) {

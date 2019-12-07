@@ -28,8 +28,9 @@ enum {
  * Per-voice state used during program data allocation.
  */
 typedef struct SSG_VoAllocState {
-	SSG_ScriptEvData *last_ev;
+	SSG_ScriptEvData *last_sev;
 	const SSG_ProgramOpList *carriers;
+	SSG_ProgramVoData *vo_prev;
 	uint32_t flags;
 	uint32_t duration_ms;
 } SSG_VoAllocState;
@@ -49,6 +50,7 @@ SSG_DEF_ArrType(SSG_VoAlloc, SSG_VoAllocState, _)
 typedef struct SSG_OpAllocState {
 	SSG_ScriptOpData *last_sod;
 	const SSG_ProgramOpList *mod_lists[SSG_POP_USES - 1];
+	SSG_ProgramOpData *op_prev;
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SSG_OpAllocState;

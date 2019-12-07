@@ -33,16 +33,15 @@ enum {
  * Operator parameter flags.
  */
 enum {
-	SSG_POPP_ADJCS = 1<<0,
-	SSG_POPP_WAVE = 1<<1,
-	SSG_POPP_TIME = 1<<2,
-	SSG_POPP_SILENCE = 1<<3,
-	SSG_POPP_FREQ = 1<<4,
-	SSG_POPP_FREQ2 = 1<<5,
-	SSG_POPP_PHASE = 1<<6,
-	SSG_POPP_AMP = 1<<7,
-	SSG_POPP_AMP2 = 1<<8,
-	SSG_POP_PARAMS = (1<<9) - 1
+	SSG_POPP_WAVE = 1<<0,
+	SSG_POPP_TIME = 1<<1,
+	SSG_POPP_SILENCE = 1<<2,
+	SSG_POPP_FREQ = 1<<3,
+	SSG_POPP_FREQ2 = 1<<4,
+	SSG_POPP_PHASE = 1<<5,
+	SSG_POPP_AMP = 1<<6,
+	SSG_POPP_AMP2 = 1<<7,
+	SSG_POP_PARAMS = (1<<8) - 1
 };
 
 /*
@@ -83,6 +82,7 @@ typedef struct SSG_ProgramVoData {
 	const SSG_ProgramOpList *carriers;
 	uint32_t params;
 	SSG_Ramp pan;
+	const struct SSG_ProgramVoData *prev;
 } SSG_ProgramVoData;
 
 typedef struct SSG_ProgramOpData {
@@ -97,6 +97,7 @@ typedef struct SSG_ProgramOpData {
 	SSG_Ramp freq, freq2;
 	SSG_Ramp amp, amp2;
 	float phase;
+	const struct SSG_ProgramOpData *prev;
 } SSG_ProgramOpData;
 
 typedef struct SSG_ProgramEvent {

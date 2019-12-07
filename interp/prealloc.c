@@ -28,10 +28,6 @@ static bool traverse_op_node(SSG_PreAlloc *restrict o,
  */
 static bool traverse_op_list(SSG_PreAlloc *restrict o,
 		const SSG_ProgramOpList *restrict op_list, uint8_t mod_use) {
-	if (!op_list) {
-		SSG_error("voicegraph", "fail on blank operator list");
-		return false;
-	}
 	SSG_ProgramOpRef op_ref = {0, mod_use, o->vg.nest_level};
 	for (uint32_t i = 0; i < op_list->count; ++i) {
 		op_ref.id = op_list->ids[i];
@@ -128,9 +124,9 @@ static bool init_events(SSG_PreAlloc *restrict o) {
 			/*
 			 * Apply linkage updates for use in init traversal.
 			 */
-			if (od->fmods != NULL) on->fmods = od->fmods;
-			if (od->pmods != NULL) on->pmods = od->pmods;
-			if (od->amods != NULL) on->amods = od->amods;
+			on->fmods = od->fmods;
+			on->pmods = od->pmods;
+			on->amods = od->amods;
 		}
 		if (prg_e->vo_data) {
 			const SSG_ProgramVoData *pvd = prg_e->vo_data;

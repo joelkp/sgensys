@@ -66,14 +66,14 @@ static uint32_t voice_duration(const SSG_ScriptEvData *restrict ve) {
  */
 static bool SSG_VoAlloc_get_id(SSG_VoAlloc *restrict va,
 		const SSG_ScriptEvData *restrict e, uint32_t *restrict vo_id) {
-	if (e->vo_prev != NULL) {
-		*vo_id = e->vo_prev->vo_id;
+	if (e->prev_vo_use != NULL) {
+		*vo_id = e->prev_vo_use->vo_id;
 		return true;
 	}
 	SSG_VoAllocState *vas;
 	for (size_t id = 0; id < va->count; ++id) {
 		vas = &va->a[id];
-		if (!(vas->last_ev->ev_flags & SSG_SDEV_VOICE_LATER_USED)
+		if (!vas->last_sev->next_vo_use
 			&& vas->duration_ms == 0) {
 			*vas = (SSG_VoAllocState){0};
 			*vo_id = id;
@@ -109,7 +109,7 @@ static bool SSG_VoAlloc_update(SSG_VoAlloc *restrict va,
 		return false;
 	e->vo_id = *vo_id;
 	SSG_VoAllocState *vas = &va->a[*vo_id];
-	vas->last_ev = e;
+	vas->last_sev = e;
 	vas->flags &= ~SSG_VAS_GRAPH;
 	if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH)
 		vas->duration_ms = voice_duration(e);
@@ -139,7 +139,7 @@ static bool SSG_OpAlloc_get_id(SSG_OpAlloc *restrict oa,
 	SSG_OpAllocState *oas;
 //	for (uint32_t id = 0; id < oa->count; ++id) {
 //		oas = &oa->a[id];
-//		if (!(oas->last_sod->op_flags & SSG_SDOP_LATER_USED)
+//		if (!oas->last_sod->next_use
 //			&& oas->duration_ms == 0) {
 //			*oas = (SSG_OpAllocState){0};
 //			*op_id = id;
@@ -238,8 +238,6 @@ static bool OpDataArr_add_for(OpDataArr *restrict o,
 static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
 		const SSG_RefList *restrict src,
 		SSG_MemPool *restrict mem) {
-	if (!src)
-		return true; // nothing to do
 	const SSG_ProgramOpList *dst = create_ProgramOpList(src, mem);
 	if (!dst)
 		return false;
@@ -250,8 +248,7 @@ static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
 /*
  * Update node modulator lists for updated lists in script data.
  *
- * Ensures non-NULL list pointers for SSG_OpAllocState nodes, while for
- * output nodes, they are non-NULL initially and upon changes.
+ * Ensures non-NULL op list pointers for output nodes.
  *
  * \return true, or false on allocation failure
  */
@@ -266,10 +263,11 @@ static bool ScriptConv_update_modlists(ScriptConv *restrict o,
 	}
 	SSG_VoAllocState *vas = &o->va.a[o->ev->vo_id];
 	for (size_t i = 0; i < SSG_POP_USES - 1; ++i) {
+		if (!sub_lists[i]) continue;
+		vas->flags |= SSG_VAS_GRAPH;
 		if (!update_oplist(&oas->mod_lists[i], sub_lists[i], o->mem))
 			return false;
 	}
-	vas->flags |= SSG_VAS_GRAPH;
 	od->fmods = oas->mod_lists[SSG_POP_FMOD - 1];
 	od->pmods = oas->mod_lists[SSG_POP_PMOD - 1];
 	od->amods = oas->mod_lists[SSG_POP_AMOD - 1];
@@ -284,18 +282,27 @@ static bool ScriptConv_update_modlists(ScriptConv *restrict o,
  * \return true, or false on allocation failure
  */
 static bool ScriptConv_convert_ops(ScriptConv *restrict o,
-		SSG_NodeRange *restrict op_list) {
-	SSG_ScriptOpData *op;
-	for (op = op_list->first; op != NULL; op = op->range_next) {
+		SSG_NodeRange *restrict sop_list) {
+	SSG_ScriptOpData *sop;
+	for (sop = sop_list->first; sop != NULL; sop = sop->range_next) {
 		uint32_t op_id;
-		if (!SSG_OpAlloc_update(&o->oa, op, &op_id)) goto MEM_ERR;
-		if (!OpDataArr_add_for(&o->ev_op_data, op, op_id)) goto MEM_ERR;
+		if (!SSG_OpAlloc_update(&o->oa, sop, &op_id)) goto MEM_ERR;
+		if (!OpDataArr_add_for(&o->ev_op_data, sop, op_id))
+			goto MEM_ERR;
 	}
-	for (size_t i = 0; i < o->ev_op_data.count; ++i) {
-		SSG_ProgramOpData *od = &o->ev_op_data.a[i];
-		if (od->params & SSG_POPP_ADJCS) {
-			if (!ScriptConv_update_modlists(o, od)) goto MEM_ERR;
-		}
+	if (o->ev_op_data.count > 0) {
+		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
+					(SSG_ProgramOpData**) &o->ev->op_data,
+					o->mem)) goto MEM_ERR;
+		o->ev->op_data_count = o->ev_op_data.count;
+		o->ev_op_data.count = 0; // reuse allocation
+	}
+	for (size_t i = 0; i < o->ev->op_data_count; ++i) {
+		SSG_ProgramOpData *od = (SSG_ProgramOpData*) &o->ev->op_data[i];
+		SSG_OpAllocState *oas = &o->oa.a[od->id];
+		if (!ScriptConv_update_modlists(o, od)) goto MEM_ERR;
+		od->prev = oas->op_prev;
+		oas->op_prev = od;
 	}
 	return true;
 MEM_ERR:
@@ -323,13 +330,6 @@ static bool ScriptConv_convert_event(ScriptConv *restrict o,
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
 	if (!ScriptConv_convert_ops(o, &e->op_all)) goto MEM_ERR;
-	if (o->ev_op_data.count > 0) {
-		if (!_OpDataArr_mpmemdup(&o->ev_op_data,
-					(SSG_ProgramOpData**) &out_ev->op_data,
-					o->mem)) goto MEM_ERR;
-		out_ev->op_data_count = o->ev_op_data.count;
-		o->ev_op_data.count = 0; // reuse allocation
-	}
 	vo_params = e->vo_params;
 	if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH)
 		vas->flags |= SSG_VAS_GRAPH;
@@ -341,12 +341,14 @@ static bool ScriptConv_convert_event(ScriptConv *restrict o,
 		if (!ovd) goto MEM_ERR;
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
-		if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH) {
+		if (e->carriers != NULL) {
 			if (!update_oplist(&vas->carriers, e->carriers,
 						o->mem)) goto MEM_ERR;
 		}
 		ovd->carriers = vas->carriers;
+		ovd->prev = vas->vo_prev;
 		out_ev->vo_data = ovd;
+		vas->vo_prev = ovd;
 	}
 	return true;
 MEM_ERR:
@@ -425,7 +427,6 @@ static SSG_Program *ScriptConv_convert(ScriptConv *restrict o,
 		prg = ScriptConv_create_program(o, script);
 		if (!prg) goto MEM_ERR;
 	}
-
 	if (false)
 	MEM_ERR: {
 		SSG_error("scriptconv", "memory allocation failure");
@@ -458,7 +459,7 @@ void SSG_discard_Program(SSG_Program *restrict o) {
 	SSG_destroy_MemPool(o->mem);
 }
 
-static void print_linked(const char *restrict header,
+static SSG__noinline void print_linked(const char *restrict header,
 		const char *restrict footer,
 		const SSG_ProgramOpList *restrict list) {
 	if (!list || !list->count)
@@ -543,9 +544,13 @@ void SSG_ProgramEvent_print_voice(const SSG_ProgramEvent *restrict ev) {
 void SSG_ProgramEvent_print_operators(const SSG_ProgramEvent *restrict ev) {
 	for (size_t i = 0; i < ev->op_data_count; ++i) {
 		const SSG_ProgramOpData *od = &ev->op_data[i];
+		const SSG_ProgramOpData *od_prev = od->prev;
 		print_opline(od);
-		print_linked("\n\t    f~[", "]", od->fmods);
-		print_linked("\n\t    p+[", "]", od->pmods);
-		print_linked("\n\t    a~[", "]", od->amods);
+		if (!od_prev || od->fmods != od_prev->fmods)
+			print_linked("\n\t    f~[", "]", od->fmods);
+		if (!od_prev || od->pmods != od_prev->pmods)
+			print_linked("\n\t    p+[", "]", od->pmods);
+		if (!od_prev || od->amods != od_prev->amods)
+			print_linked("\n\t    a~[", "]", od->amods);
 	}
 }

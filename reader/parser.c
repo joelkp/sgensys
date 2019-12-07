@@ -580,7 +580,7 @@ static bool parse_waittime(ParseLevel *restrict pl) {
 "add wait for last duration before any parts given");
 			return false;
 		}
-		pl->last_event->ev_flags |= SSG_SDEV_ADD_WAIT_DURATION;
+		pl->last_event->ev_flags |= SSG_PDEV_ADD_WAIT_DURATION;
 	} else {
 		uint32_t wait_ms;
 		if (!scan_time_val(sc, &wait_ms))
@@ -641,18 +641,18 @@ static SSG__noinline void end_operator(ParseLevel *restrict pl) {
 	ScanLookup *sl = &o->sl;
 	SSG_ParseOpData *op = pl->operator;
 	if (SSG_Ramp_ENABLED(&op->amp)) {
-		if (!(op->op_flags & SSG_SDOP_NESTED)) {
+		if (!(op->op_flags & SSG_PDOP_NESTED)) {
 			op->amp.v0 *= sl->sopt.ampmult;
 			op->amp.vt *= sl->sopt.ampmult;
 		}
 	}
 	if (SSG_Ramp_ENABLED(&op->amp2)) {
-		if (!(op->op_flags & SSG_SDOP_NESTED)) {
+		if (!(op->op_flags & SSG_PDOP_NESTED)) {
 			op->amp2.v0 *= sl->sopt.ampmult;
 			op->amp2.vt *= sl->sopt.ampmult;
 		}
 	}
-	SSG_ParseOpData *pop = op->op_prev;
+	SSG_ParseOpData *pop = op->prev;
 	if (!pop) {
 		/*
 		 * Reset all operator state for initial event.
@@ -693,7 +693,6 @@ static void begin_event(ParseLevel *restrict pl,
 	SSG_Ramp_reset(&e->pan);
 	if (pl->op_prev != NULL) {
 		SSG_ParseEvData *pve = pl->op_prev->event;
-		pve->ev_flags |= SSG_SDEV_VOICE_LATER_USED;
 		if (is_composite) {
 			if (!pl->composite) {
 				pve->composite = e;
@@ -701,11 +700,6 @@ static void begin_event(ParseLevel *restrict pl,
 			} else {
 				pve->next = e;
 			}
-		} else if (pve->composite != NULL) {
-			SSG_ParseEvData *last_ce;
-			for (last_ce = pve->composite; last_ce->next;
-					last_ce = last_ce->next) ;
-			last_ce->ev_flags |= SSG_SDEV_VOICE_LATER_USED;
 		}
 		e->vo_prev = pve;
 	} else {
@@ -754,12 +748,11 @@ static void begin_operator(ParseLevel *restrict pl,
 	SSG_Ramp_reset(&op->amp2);
 	if (pop != NULL) {
 		op->use_type = pop->use_type;
-		pop->op_flags |= SSG_SDOP_LATER_USED;
-		op->op_prev = pop;
+		op->prev = pop;
 		op->op_flags = pop->op_flags &
-			(SSG_SDOP_NESTED | SSG_SDOP_MULTIPLE);
+			(SSG_PDOP_NESTED | SSG_PDOP_MULTIPLE);
 		if (is_composite) {
-			pop->op_flags |= SSG_SDOP_HAS_COMPOSITE;
+			pop->op_flags |= SSG_PDOP_HAS_COMPOSITE;
 		} else {
 			op->time.flags |= SSG_TIMEP_SET;
 		}
@@ -770,7 +763,7 @@ static void begin_operator(ParseLevel *restrict pl,
 				if (max_time < mpop->time.v_ms)
 					max_time = mpop->time.v_ms;
 			} while ((mpop = mpop->next_bound) != NULL);
-			op->op_flags |= SSG_SDOP_MULTIPLE;
+			op->op_flags |= SSG_PDOP_MULTIPLE;
 			op->time.v_ms = max_time;
 			pl->pl_flags &= ~PL_BIND_MULTIPLE;
 		}
@@ -784,7 +777,7 @@ static void begin_operator(ParseLevel *restrict pl,
 		if (op->use_type == SSG_POP_CARR) {
 			op->freq.v0 = sl->sopt.def_freq;
 		} else {
-			op->op_flags |= SSG_SDOP_NESTED;
+			op->op_flags |= SSG_PDOP_NESTED;
 			op->freq.v0 = sl->sopt.def_relfreq;
 			op->freq.flags |= SSG_RAMPP_STATE_RATIO;
 		}
@@ -1006,7 +999,6 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 			op->op_params |= SSG_POPP_AMP2;
 	}
 	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
-		op->op_params |= SSG_POPP_ADJCS;
 		parse_level(o, pl, SSG_POP_AMOD, SCOPE_NEST);
 	}
 	return false;
@@ -1017,7 +1009,7 @@ static bool parse_ev_chanmix(ParseLevel *restrict pl) {
 	SSG_Scanner *sc = o->sc;
 	SSG_ParseEvData *e = pl->event;
 	SSG_ParseOpData *op = pl->operator;
-	if (op->op_flags & SSG_SDOP_NESTED)
+	if (op->op_flags & SSG_PDOP_NESTED)
 		return true; // reject
 	if (scan_ramp(sc, scan_chanmix_const, &e->pan, false))
 		e->vo_params |= SSG_PVOP_PAN;
@@ -1028,7 +1020,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SSG_Parser *o = pl->o;
 	SSG_Scanner *sc = o->sc;
 	SSG_ParseOpData *op = pl->operator;
-	if (rel_freq && !(op->op_flags & SSG_SDOP_NESTED))
+	if (rel_freq && !(op->op_flags & SSG_PDOP_NESTED))
 		return true; // reject
 	SSG_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
 	if (scan_ramp(sc, numconst_f, &op->freq, rel_freq))
@@ -1038,7 +1030,6 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 			op->op_params |= SSG_POPP_FREQ2;
 	}
 	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
-		op->op_params |= SSG_POPP_ADJCS;
 		parse_level(o, pl, SSG_POP_FMOD, SCOPE_NEST);
 	}
 	return false;
@@ -1055,7 +1046,6 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SSG_POPP_PHASE;
 	}
 	if (SSG_Scanner_tryc(sc, '+') && SSG_Scanner_tryc(sc, '[')) {
-		op->op_params |= SSG_POPP_ADJCS;
 		parse_level(o, pl, SSG_POP_PMOD, SCOPE_NEST);
 	}
 	return false;
@@ -1072,8 +1062,9 @@ static void parse_in_event(ParseLevel *restrict pl) {
 		switch (c) {
 		case '\\':
 			if (parse_waittime(pl) && pl->event != NULL) {
-				// FIXME: Buggy update node handling
-				// for carriers etc. if enabled.
+				// FIXME: Replace grouping into and counting
+				// of carriers as voices with reliable count
+				// and handling of carriers for scaling etc.
 				//begin_node(pl, pl->operator, false);
 			}
 			break;
@@ -1102,7 +1093,7 @@ static void parse_in_event(ParseLevel *restrict pl) {
 				op->time.v_ms = o->sl.sopt.def_time_ms;
 				op->time.flags = 0;
 			} else if (SSG_Scanner_tryc(sc, 'i')) {
-				if (!(op->op_flags & SSG_SDOP_NESTED)) {
+				if (!(op->op_flags & SSG_PDOP_NESTED)) {
 					SSG_Scanner_warning(sc, NULL,
 "ignoring 'ti' (infinite time) for non-nested operator");
 					break;

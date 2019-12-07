@@ -1,0 +1,3 @@
+// This should play a simple 200 Hz tone
+Osin f200 t1 p+['rem Osin f100 ; f400] p+[]
+@rem f800 p+['rem2 Osin f400] | @rem2 f1600
