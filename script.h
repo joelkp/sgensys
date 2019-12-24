@@ -16,6 +16,13 @@
 #include "program.h"
 
 /**
+ * Points to bounding members of a linearly ordered list of nodes.
+ */
+typedef struct SSG_NodeRange {
+	void *first, *last;
+} SSG_NodeRange;
+
+/**
  * Script data operator flags.
  */
 enum {
@@ -31,6 +38,7 @@ enum {
  * Node type for operator data.
  */
 typedef struct SSG_ScriptOpData {
+	struct SSG_ScriptOpData *range_next;
 	struct SSG_ScriptEvData *event;
 	struct SSG_ScriptOpData *next_bound;
 	const char *label;
@@ -67,7 +75,7 @@ typedef struct SSG_ScriptEvData {
 	struct SSG_ScriptEvData *next;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_PtrArr op_all;
+	SSG_NodeRange op_all;
 	/* voice parameters */
 	uint32_t vo_id;
 	uint32_t vo_params;

@@ -16,11 +16,13 @@
 #include "symtab.h"
 
 /**
- * Points to bounding members of a linearly ordered list of nodes.
+ * Linked list of node ranges each for a parse data sublist.
  */
-typedef struct SSG_NodeRange {
-	void *first, *last;
-} SSG_NodeRange;
+typedef struct SSG_ParseSublist {
+	SSG_NodeRange range;
+	struct SSG_ParseSublist *next;
+	uint8_t use_type;
+} SSG_ParseSublist;
 
 /**
  * Node type for operator data.
@@ -28,6 +30,8 @@ typedef struct SSG_NodeRange {
 typedef struct SSG_ParseOpData {
 	struct SSG_ParseOpData *range_next;
 	struct SSG_ParseEvData *event;
+	SSG_ParseSublist *nest_scopes;
+	SSG_ParseSublist *last_nest_scope;
 	struct SSG_ParseOpData *next_bound;
 	SSG_SymStr *label;
 	uint32_t op_flags;
@@ -42,8 +46,6 @@ typedef struct SSG_ParseOpData {
 	float phase;
 	struct SSG_ParseOpData *op_prev; /* preceding for same op(s) */
 	void *op_conv; /* for parseconv */
-	/* node adjacents in operator linkage graph */
-	SSG_NodeRange *fmods, *pmods, *amods;
 } SSG_ParseOpData;
 
 /**

@@ -257,14 +257,10 @@ static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
  * \return true, or false on allocation failure
  */
 static bool ScriptConv_convert_ops(ScriptConv *restrict o,
-		SSG_PtrArr *restrict op_list) {
-	SSG_ScriptOpData **ops;
-	ops = (SSG_ScriptOpData**) SSG_PtrArr_ITEMS(op_list);
-	for (size_t i = op_list->old_count; i < op_list->count; ++i) {
-		SSG_ScriptOpData *op = ops[i];
+		SSG_NodeRange *restrict op_list) {
+	SSG_ScriptOpData *op;
+	for (op = op_list->first; op != NULL; op = op->range_next) {
 		uint32_t op_id;
-		// TODO: handle multiple operator nodes
-		if (op->op_flags & SSG_SDOP_MULTIPLE) continue;
 		if (!SSG_OpAlloc_update(&o->oa, op, &op_id)) goto MEM_ERR;
 		if (!OpDataArr_add_for(&o->ev_op_data, op, op_id)) goto MEM_ERR;
 	}

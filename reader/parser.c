@@ -620,27 +620,26 @@ ERROR:
  */
 enum {
 	SCOPE_TOP = 0,
+	SCOPE_BLOCK,
 	SCOPE_BIND,
 	SCOPE_NEST,
 };
 
-/*
- * Current "location" (what is being parsed/worked on) for parse level.
- */
-enum {
-	SDPL_IN_NONE = 0, // no target for parameters
-	SDPL_IN_DEFAULTS, // adjusting default values
-	SDPL_IN_EVENT,    // adjusting operator and/or voice
-};
+typedef struct ParseLevel ParseLevel;
+typedef void (*ParseLevelSub_f)(ParseLevel *restrict pl);
+
+static void parse_in_event(ParseLevel *restrict pl);
+static void parse_in_settings(ParseLevel *restrict pl);
 
 /*
  * Parse level flags.
  */
 enum {
-	SDPL_BIND_MULTIPLE = 1<<0, // previous node interpreted as set of nodes
-	SDPL_NESTED_SCOPE = 1<<1,
-	SDPL_ACTIVE_EV = 1<<2,
-	SDPL_ACTIVE_OP = 1<<3,
+	PL_DEFERRED_SUB  = 1<<0, // \a sub_f exited to attempt handling above
+	PL_BIND_MULTIPLE = 1<<1, // previous node interpreted as set of nodes
+	PL_NESTED_SCOPE  = 1<<2,
+	PL_ACTIVE_EV     = 1<<3,
+	PL_ACTIVE_OP     = 1<<4,
 };
 
 /*
@@ -648,22 +647,22 @@ enum {
  *
  *
  */
-typedef struct ParseLevel {
+struct ParseLevel {
 	SSG_Parser *o;
 	struct ParseLevel *parent;
+	ParseLevelSub_f sub_f; // identifies "location" and implicit context
 	uint32_t pl_flags;
-	uint8_t location;
 	uint8_t scope;
 	SSG_ParseEvData *event, *last_event;
 	SSG_ParseOpData *operator, *first_operator, *last_operator;
 	SSG_ParseOpData *parent_op, *op_prev;
-	uint8_t use_type; /* FIXME: kludge */
+	SSG_ParseSublist *op_scope;
 	SSG_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
 	SSG_ParseEvData *group_from; /* where to begin for group_events() */
 	SSG_ParseEvData *composite; /* grouping of events for a voice and/or operator */
 	uint32_t next_wait_ms; /* added for next event */
-} ParseLevel;
+};
 
 static bool parse_waittime(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
@@ -695,29 +694,15 @@ static bool parse_waittime(ParseLevel *restrict pl) {
  */
 static void destroy_operator(SSG_ParseOpData *restrict op) {
 	SSG_ParseOpData *sub_op, *sub_op_next;
-	if (op->fmods != NULL) {
-		sub_op = op->fmods->first;
+	SSG_ParseSublist *scope = op->nest_scopes, *scope_next;
+	for (; scope != NULL; scope = scope_next) {
+		scope_next = scope->next;
+		sub_op = scope->range.first;
 		for (; sub_op != NULL; sub_op = sub_op_next) {
 			sub_op_next = sub_op->range_next;
 			destroy_operator(sub_op);
 		}
-		free(op->fmods);
-	}
-	if (op->pmods != NULL) {
-		sub_op = op->pmods->first;
-		for (; sub_op != NULL; sub_op = sub_op_next) {
-			sub_op_next = sub_op->range_next;
-			destroy_operator(sub_op);
-		}
-		free(op->pmods);
-	}
-	if (op->amods != NULL) {
-		sub_op = op->amods->first;
-		for (; sub_op != NULL; sub_op = sub_op_next) {
-			sub_op_next = sub_op->range_next;
-			destroy_operator(sub_op);
-		}
-		free(op->amods);
+		free(scope);
 	}
 	free(op);
 }
@@ -735,10 +720,18 @@ static void destroy_event_node(SSG_ParseEvData *restrict e) {
 	free(e);
 }
 
-static void end_operator(ParseLevel *restrict pl) {
-	if (!(pl->pl_flags & SDPL_ACTIVE_OP))
+static SSG_ParseSublist *create_op_scope(uint8_t use_type) {
+	SSG_ParseSublist *o = calloc(1, sizeof(SSG_ParseSublist));
+	if (!o)
+		return NULL;
+	o->use_type = use_type;
+	return o;
+}
+
+static SSG__noinline void end_operator(ParseLevel *restrict pl) {
+	if (!(pl->pl_flags & PL_ACTIVE_OP))
 		return;
-	pl->pl_flags &= ~SDPL_ACTIVE_OP;
+	pl->pl_flags &= ~PL_ACTIVE_OP;
 	SSG_Parser *o = pl->o;
 	SSG_ParseOpData *op = pl->operator;
 	if (SSG_Ramp_ENABLED(&op->amp)) {
@@ -772,10 +765,10 @@ static void end_operator(ParseLevel *restrict pl) {
 	pl->last_operator = op;
 }
 
-static void end_event(ParseLevel *restrict pl) {
-	if (!(pl->pl_flags & SDPL_ACTIVE_EV))
+static SSG__noinline void end_event(ParseLevel *restrict pl) {
+	if (!(pl->pl_flags & PL_ACTIVE_EV))
 		return;
-	pl->pl_flags &= ~SDPL_ACTIVE_EV;
+	pl->pl_flags &= ~PL_ACTIVE_EV;
 	SSG_ParseEvData *e = pl->event;
 	end_operator(pl);
 	SSG_ParseEvData *pve = e->vo_prev;
@@ -833,10 +826,10 @@ static void begin_event(ParseLevel *restrict pl,
 		o->ev = e;
 		pl->composite = NULL;
 	}
-	pl->pl_flags |= SDPL_ACTIVE_EV;
+	pl->pl_flags |= PL_ACTIVE_EV;
 }
 
-static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
+static void begin_operator(ParseLevel *restrict pl,
 		bool is_composite) {
 	SSG_Parser *o = pl->o;
 	SSG_ParseEvData *e = pl->event;
@@ -860,7 +853,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
 	SSG_Ramp_reset(&op->amp);
 	SSG_Ramp_reset(&op->amp2);
 	if (pop != NULL) {
-		use_type = pop->use_type;
+		op->use_type = pop->use_type;
 		pop->op_flags |= SSG_SDOP_LATER_USED;
 		op->op_prev = pop;
 		op->op_flags = pop->op_flags &
@@ -870,7 +863,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
 		} else {
 			op->time.flags |= SSG_TIMEP_SET;
 		}
-		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
+		if ((pl->pl_flags & PL_BIND_MULTIPLE) != 0) {
 			SSG_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
 			do {
@@ -879,13 +872,16 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
 			} while ((mpop = mpop->next_bound) != NULL);
 			op->op_flags |= SSG_SDOP_MULTIPLE;
 			op->time.v_ms = max_time;
-			pl->pl_flags &= ~SDPL_BIND_MULTIPLE;
+			pl->pl_flags &= ~PL_BIND_MULTIPLE;
 		}
 	} else {
 		/*
 		 * New operator with initial parameter values.
 		 */
-		if (!(pl->pl_flags & SDPL_NESTED_SCOPE)) {
+		op->use_type = (pl->op_scope != NULL) ?
+				pl->op_scope->use_type :
+				SSG_POP_CARR;
+		if (op->use_type == SSG_POP_CARR) {
 			op->freq.v0 = o->sl.sopt.def_freq;
 		} else {
 			op->op_flags |= SSG_SDOP_NESTED;
@@ -896,30 +892,15 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
 		op->amp.v0 = 1.0f;
 		op->amp.flags |= SSG_RAMPP_STATE;
 	}
-	op->use_type = use_type;
-	pl->use_type = use_type; /* FIXME: kludge */
 	op->event = e;
 	/*
 	 * Add new operator to parent(s), ie. either the current event node,
 	 * or an operator node (either ordinary or representing multiple
 	 * carriers) in the case of operator linking/nesting.
 	 */
-	SSG_NodeRange *list = NULL;
-	if (pop != NULL || use_type == SSG_POP_CARR) {
-		list = &e->operators;
-	} else {
-		switch (use_type) {
-		case SSG_POP_FMOD:
-			list = pl->parent_op->fmods;
-			break;
-		case SSG_POP_PMOD:
-			list = pl->parent_op->pmods;
-			break;
-		case SSG_POP_AMOD:
-			list = pl->parent_op->amods;
-			break;
-		}
-	}
+	SSG_NodeRange *list = &e->operators;
+	if (!pop && pl->op_scope != NULL)
+		list = &pl->op_scope->range;
 	if (!list->first)
 		list->first = op;
 	else
@@ -938,7 +919,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
 		op->label = pop->label;
 		op->label->data = op;
 	}
-	pl->pl_flags |= SDPL_ACTIVE_OP;
+	pl->pl_flags |= PL_ACTIVE_OP;
 }
 
 /*
@@ -949,43 +930,85 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
  */
 static void begin_node(ParseLevel *restrict pl,
 		SSG_ParseOpData *restrict previous,
-		uint8_t use_type, bool is_composite) {
+		bool is_composite) {
 	pl->op_prev = previous;
-	if (!pl->event ||
-			pl->location != SDPL_IN_EVENT
-			/* previous event implicitly ended */ ||
+	if (!pl->event || /* not in event parse means event now ended */
+			pl->sub_f != parse_in_event ||
 			pl->next_wait_ms ||
 			is_composite)
 		begin_event(pl, is_composite);
-	begin_operator(pl, use_type, is_composite);
+	begin_operator(pl, is_composite);
 }
 
 static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
-		ParseLevel *restrict parent_pl, uint8_t newscope) {
+		ParseLevel *restrict parent_pl,
+		uint8_t use_type, uint8_t newscope) {
 	*pl = (ParseLevel){0};
 	pl->o = o;
 	pl->scope = newscope;
-	if (parent_pl != NULL) {
-		pl->parent = parent_pl;
-		pl->pl_flags = parent_pl->pl_flags &
-			(SDPL_NESTED_SCOPE | SDPL_BIND_MULTIPLE);
-		pl->location = parent_pl->location;
-		pl->event = parent_pl->event;
-		pl->operator = parent_pl->operator;
-		pl->parent_op = parent_pl->parent_op;
-		if (newscope == SCOPE_BIND)
-			pl->group_from = parent_pl->group_from;
-		if (newscope == SCOPE_NEST) {
-			pl->pl_flags |= SDPL_NESTED_SCOPE;
-			pl->parent_op = parent_pl->operator;
-		}
+	if (!parent_pl) {
+		// handle newscope == SCOPE_TOP here
+		if (use_type != SSG_POP_CARR)
+			pl->op_scope = create_op_scope(use_type);
+		return;
+	}
+	pl->parent = parent_pl;
+	pl->pl_flags = parent_pl->pl_flags &
+		(PL_NESTED_SCOPE | PL_BIND_MULTIPLE);
+	pl->sub_f = parent_pl->sub_f;
+	pl->event = parent_pl->event;
+	pl->operator = parent_pl->operator;
+	pl->parent_op = parent_pl->parent_op;
+	switch (newscope) {
+	case SCOPE_BLOCK:
+		pl->group_from = parent_pl->group_from;
+		pl->op_scope = parent_pl->op_scope;
+		break;
+	case SCOPE_BIND:
+		pl->group_from = parent_pl->group_from;
+		pl->op_scope = create_op_scope(use_type);
+		break;
+	case SCOPE_NEST:
+		pl->pl_flags |= PL_NESTED_SCOPE;
+		pl->parent_op = parent_pl->operator;
+		pl->op_scope = create_op_scope(use_type);
+		break;
+	default:
+		break;
 	}
 }
 
 static void end_scope(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	end_operator(pl);
-	if (pl->scope == SCOPE_BIND) {
+	if (pl->set_label != NULL) {
+		scan_warning(&o->sc,
+				"ignoring label assignment without operator");
+	}
+	switch (pl->scope) {
+	case SCOPE_TOP: {
+		/*
+		 * At end of top scope, i.e. at end of script,
+		 * end last event and adjust timing.
+		 */
+		SSG_ParseEvData *group_to;
+		end_event(pl);
+		group_to = (pl->composite) ? pl->composite : pl->last_event;
+		if (group_to)
+			group_to->groupfrom = pl->group_from;
+		break; }
+	case SCOPE_BLOCK:
+		if (!pl->parent->group_from)
+			pl->parent->group_from = pl->group_from;
+		if (pl->pl_flags & PL_ACTIVE_EV) {
+			end_event(pl->parent);
+			pl->parent->pl_flags |= PL_ACTIVE_EV;
+			pl->parent->event = pl->event;
+		}
+		if (pl->last_event != NULL)
+			pl->parent->last_event = pl->last_event;
+		break;
+	case SCOPE_BIND:
 		if (!pl->parent->group_from)
 			pl->parent->group_from = pl->group_from;
 		/*
@@ -994,24 +1017,22 @@ static void end_scope(ParseLevel *restrict pl) {
 		 * provided any are present.
 		 */
 		if (pl->first_operator != NULL) {
-			pl->parent->pl_flags |= SDPL_BIND_MULTIPLE;
-			begin_node(pl->parent, pl->first_operator,
-					pl->parent->use_type, false);
+			pl->parent->pl_flags |= PL_BIND_MULTIPLE;
+			begin_node(pl->parent, pl->first_operator, false);
 		}
-	} else if (!pl->parent) {
-		/*
-		 * At end of top scope, ie. at end of script -
-		 * end last event and adjust timing.
-		 */
-		SSG_ParseEvData *group_to;
-		end_event(pl);
-		group_to = (pl->composite) ? pl->composite : pl->last_event;
-		if (group_to)
-			group_to->groupfrom = pl->group_from;
-	}
-	if (pl->set_label != NULL) {
-		scan_warning(&o->sc,
-"ignoring label assignment without operator");
+		break;
+	case SCOPE_NEST: {
+		if (!pl->parent_op)
+			break;
+		SSG_ParseOpData *parent_op = pl->parent_op;
+		if (!parent_op->nest_scopes)
+			parent_op->nest_scopes = pl->op_scope;
+		else
+			parent_op->last_nest_scope->next = pl->op_scope;
+		parent_op->last_nest_scope = pl->op_scope;
+		break; }
+	default:
+		break;
 	}
 }
 
@@ -1019,12 +1040,13 @@ static void end_scope(ParseLevel *restrict pl) {
  * Main parser functions
  */
 
-static bool parse_settings(ParseLevel *restrict pl) {
+static void parse_in_settings(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	PScanner *sc = &o->sc;
-	pl->location = SDPL_IN_DEFAULTS;
+	pl->sub_f = parse_in_settings;
+	uint8_t c;
 	for (;;) {
-		uint8_t c = scan_getc(sc);
+		c = scan_getc(sc);
 		switch (c) {
 		case 'a':
 			if (scan_num(sc, NULL, &o->sl.sopt.ampmult)) {
@@ -1059,12 +1081,12 @@ static bool parse_settings(ParseLevel *restrict pl) {
 			}
 			break;
 		default:
-		/*UNKNOWN:*/
-			scan_stashc(sc, c);
-			return true; /* let parse_level() take care of it */
+			goto DEFER;
 		}
 	}
-	return false;
+DEFER:
+	scan_stashc(sc, c);
+	pl->pl_flags |= PL_DEFERRED_SUB; /* let parse_level() look at it */
 }
 
 static void parse_level(SSG_Parser *restrict o,
@@ -1083,7 +1105,6 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 			op->op_params |= SSG_POPP_AMP2;
 	}
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
-		op->amods = calloc(1, sizeof(SSG_NodeRange));
 		op->op_params |= SSG_POPP_ADJCS;
 		parse_level(o, pl, SSG_POP_AMOD, SCOPE_NEST);
 	}
@@ -1105,7 +1126,6 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 			op->op_params |= SSG_POPP_FREQ2;
 	}
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
-		op->fmods = calloc(1, sizeof(SSG_NodeRange));
 		op->op_params |= SSG_POPP_ADJCS;
 		parse_level(o, pl, SSG_POP_FMOD, SCOPE_NEST);
 	}
@@ -1124,26 +1144,26 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SSG_POPP_PHASE;
 	}
 	if (SSG_File_TRYC(f, '+') && SSG_File_TRYC(f, '[')) {
-		op->pmods = calloc(1, sizeof(SSG_NodeRange));
 		op->op_params |= SSG_POPP_ADJCS;
 		parse_level(o, pl, SSG_POP_PMOD, SCOPE_NEST);
 	}
 	return false;
 }
 
-static bool parse_step(ParseLevel *restrict pl) {
+static void parse_in_event(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	PScanner *sc = &o->sc;
 	SSG_File *f = sc->f;
 	SSG_ParseEvData *e = pl->event;
 	SSG_ParseOpData *op = pl->operator;
-	pl->location = SDPL_IN_EVENT;
+	pl->sub_f = parse_in_event;
+	uint8_t c;
 	for (;;) {
-		uint8_t c = scan_getc(sc);
+		c = scan_getc(sc);
 		switch (c) {
 		case 'P':
-			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
-				goto UNKNOWN;
+			if ((pl->pl_flags & PL_NESTED_SCOPE) != 0)
+				goto DEFER;
 			if (scan_ramp(sc, NULL, &e->pan, false))
 				e->vo_params |= SSG_PVOP_PAN;
 			break;
@@ -1151,20 +1171,20 @@ static bool parse_step(ParseLevel *restrict pl) {
 			if (parse_waittime(pl) && pl->event != NULL) {
 				// FIXME: Buggy update node handling
 				// for carriers etc. if enabled.
-				//begin_node(pl, pl->operator, 0, false);
+				//begin_node(pl, pl->operator, false);
 			}
 			break;
 		case 'a':
-			if (parse_ev_amp(pl)) goto UNKNOWN;
+			if (parse_ev_amp(pl)) goto DEFER;
 			break;
 		case 'f':
-			if (parse_ev_freq(pl, false)) goto UNKNOWN;
+			if (parse_ev_freq(pl, false)) goto DEFER;
 			break;
 		case 'p':
-			if (parse_ev_phase(pl)) goto UNKNOWN;
+			if (parse_ev_phase(pl)) goto DEFER;
 			break;
 		case 'r':
-			if (parse_ev_freq(pl, true)) goto UNKNOWN;
+			if (parse_ev_freq(pl, true)) goto DEFER;
 			break;
 		case 's':
 			scan_time_val(sc, &op->silence_ms);
@@ -1198,31 +1218,26 @@ static bool parse_step(ParseLevel *restrict pl) {
 			op->op_params |= SSG_POPP_WAVE;
 			break; }
 		default:
-		UNKNOWN:
-			scan_stashc(sc, c);
-			return true; /* let parse_level() take care of it */
+			goto DEFER;
 		}
 	}
-	return false;
+DEFER:
+	scan_stashc(sc, c);
+	pl->pl_flags |= PL_DEFERRED_SUB; /* let parse_level() look at it */
 }
 
-enum {
-	HANDLE_DEFER = 1<<0,
-	DEFERRED_STEP = 1<<1,
-	DEFERRED_SETTINGS = 1<<2,
-};
 static void parse_level(SSG_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t use_type, uint8_t newscope) {
 	ParseLevel pl;
 	SSG_SymStr *label;
-	uint8_t flags = 0;
-	begin_scope(o, &pl, parent_pl, newscope);
+	begin_scope(o, &pl, parent_pl, use_type, newscope);
 	++o->call_level;
 	PScanner *sc = &o->sc;
 	SSG_File *f = sc->f;
+	uint8_t c;
 	for (;;) {
-		uint8_t c = scan_getc(sc);
+		c = scan_getc(sc);
 		switch (c) {
 		case SCAN_NEWLINE:
 			if (pl.scope == SCOPE_TOP) {
@@ -1232,8 +1247,7 @@ static void parse_level(SSG_Parser *restrict o,
 				 */
 				if (o->call_level > 1)
 					goto RETURN;
-				flags = 0;
-				pl.location = SDPL_IN_NONE;
+				pl.sub_f = NULL;
 				pl.first_operator = NULL;
 			}
 			break;
@@ -1249,12 +1263,19 @@ static void parse_level(SSG_Parser *restrict o,
 			pl.set_label = scan_label(sc, c);
 			break;
 		case ';':
-			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
+			if (pl.sub_f == parse_in_settings || !pl.event)
 				goto INVALID;
-			begin_node(&pl, pl.operator, 0, true);
-			flags = parse_step(&pl) ?
-				(HANDLE_DEFER | DEFERRED_STEP) :
-				0;
+			begin_node(&pl, pl.operator, true);
+			parse_in_event(&pl);
+			break;
+		case '<':
+			parse_level(o, &pl, use_type, SCOPE_BLOCK);
+			break;
+		case '>':
+			if (pl.scope == SCOPE_BLOCK) {
+				goto RETURN;
+			}
+			scan_warning(sc, "closing '>' without opening '<'");
 			break;
 		case '@':
 			if (SSG_File_TRYC(f, '[')) {
@@ -1263,9 +1284,7 @@ static void parse_level(SSG_Parser *restrict o,
 				/*
 				 * Multiple-operator node now open.
 				 */
-				flags = parse_step(&pl) ?
-					(HANDLE_DEFER | DEFERRED_STEP) :
-					0;
+				parse_in_event(&pl);
 				break;
 			}
 			/*
@@ -1276,7 +1295,7 @@ static void parse_level(SSG_Parser *restrict o,
 "ignoring label assignment to label reference");
 				pl.set_label = NULL;
 			}
-			pl.location = SDPL_IN_NONE;
+			pl.sub_f = NULL;
 			label = scan_label(sc, c);
 			if (label != NULL) {
 				SSG_ParseOpData *ref = label->data;
@@ -1284,10 +1303,8 @@ static void parse_level(SSG_Parser *restrict o,
 					scan_warning(sc,
 "ignoring reference to undefined label");
 				else {
-					begin_node(&pl, ref, 0, false);
-					flags = parse_step(&pl) ?
-						(HANDLE_DEFER | DEFERRED_STEP) :
-						0;
+					begin_node(&pl, ref, false);
+					parse_in_event(&pl);
 				}
 			}
 			break;
@@ -1295,35 +1312,30 @@ static void parse_level(SSG_Parser *restrict o,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(&pl, NULL, use_type, false);
+			begin_node(&pl, NULL, false);
 			pl.operator->wave = wave;
-			flags = parse_step(&pl) ?
-				(HANDLE_DEFER | DEFERRED_STEP) :
-				0;
+			parse_in_event(&pl);
 			break; }
 		case 'Q':
 			goto FINISH;
 		case 'S':
-			flags = parse_settings(&pl) ?
-				(HANDLE_DEFER | DEFERRED_SETTINGS) :
-				0;
+			parse_in_settings(&pl);
 			break;
 		case '[':
 			scan_warning(sc, "opening '[' out of place");
 			break;
 		case '\\':
-			if (pl.location == SDPL_IN_DEFAULTS ||
-					((pl.pl_flags & SDPL_NESTED_SCOPE) != 0
+			if (pl.sub_f == parse_in_settings ||
+					((pl.pl_flags & PL_NESTED_SCOPE) != 0
 					&& pl.event != NULL))
 				goto INVALID;
 			parse_waittime(&pl);
 			break;
 		case ']':
-			if (pl.scope == SCOPE_BIND) {
-				goto RETURN;
-			}
 			if (pl.scope == SCOPE_NEST) {
 				end_operator(&pl);
+			}
+			if (pl.scope > SCOPE_BLOCK) {
 				goto RETURN;
 			}
 			scan_warning(sc, "closing ']' without opening '['");
@@ -1332,8 +1344,8 @@ static void parse_level(SSG_Parser *restrict o,
 			scan_warning(sc, "opening '{' out of place");
 			break;
 		case '|':
-			if (pl.location == SDPL_IN_DEFAULTS ||
-					((pl.pl_flags & SDPL_NESTED_SCOPE) != 0
+			if (pl.sub_f == parse_in_settings ||
+					((pl.pl_flags & PL_NESTED_SCOPE) != 0
 					&& pl.event != NULL))
 				goto INVALID;
 			if (!pl.event) {
@@ -1349,8 +1361,7 @@ static void parse_level(SSG_Parser *restrict o,
 				pl.group_from = NULL;
 			}
 			end_event(&pl);
-			flags &= ~DEFERRED_STEP;
-			pl.location = SDPL_IN_NONE;
+			pl.sub_f = NULL;
 			break;
 		case '}':
 			scan_warning(sc, "closing '}' without opening '{'");
@@ -1360,22 +1371,18 @@ static void parse_level(SSG_Parser *restrict o,
 			if (!handle_unknown_or_end(sc)) goto FINISH;
 			break;
 		}
-		/* Return to sub-parsing routines. */
-		if (flags != 0 && !(flags & HANDLE_DEFER)) {
-			uint8_t test = flags;
-			flags = 0;
-			if ((test & DEFERRED_STEP) != 0) {
-				if (parse_step(&pl))
-					flags = HANDLE_DEFER | DEFERRED_STEP;
-			} else if ((test & DEFERRED_SETTINGS) != 0)
-				if (parse_settings(&pl))
-					flags = HANDLE_DEFER | DEFERRED_SETTINGS;
-		}
-		flags &= ~HANDLE_DEFER;
+		/*
+		 * Return to any sub-parsing routine.
+		 */
+		if (pl.sub_f != NULL && !(pl.pl_flags & PL_DEFERRED_SUB))
+			pl.sub_f(&pl);
+		pl.pl_flags &= ~PL_DEFERRED_SUB;
 	}
 FINISH:
-	if (newscope == SCOPE_NEST || newscope == SCOPE_BIND)
+	if (newscope > SCOPE_BLOCK)
 		scan_warning(sc, "end of file without closing ']'s");
+	else if (newscope == SCOPE_BLOCK)
+		scan_warning(sc, "end of file without closing '>'s");
 RETURN:
 	end_scope(&pl);
 	--o->call_level;
