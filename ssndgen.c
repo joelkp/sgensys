@@ -12,18 +12,40 @@
  */
 
 #include "ssndgen.h"
+#include "help.h"
 #include <errno.h>
-#include <stdio.h>
 #include <stdlib.h>
 #define NAME SSG_CLINAME_STR
 
 /*
+ * Print help list for \p topic,
+ * with an optional \p description in parentheses.
+ */
+static void print_help(const char *restrict topic,
+		const char *restrict description) {
+	const char *const *contents = SSG_find_help(topic);
+	if (!contents || /* silence warning */ !topic) {
+		topic = SSG_Help_names[SSG_HELP_HELP];
+		contents = SSG_Help_names;
+	}
+	fprintf(stderr, "\nList of %s types", topic);
+	if (description != NULL)
+		fprintf(stderr, " (%s)", description);
+	fputs(":\n", stderr);
+	SSG_print_names(contents, "\t", stderr);
+}
+
+/*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(bool h_arg, const char *restrict h_type) {
 	fputs(
-"Usage: "NAME" [-a|-m] [-r <srate>] [-p] [-o <wavfile>] [-e] <script>...\n"
-"       "NAME" [-c] [-p] [-e] <script>...\n"
+"Usage: "NAME" [-a|-m] [-r <srate>] [-o <wavfile>] [options] <script>...\n"
+"       "NAME" [-c] [options] <script>...\n"
+"Common options: [-e] [-p]\n",
+		stderr);
+	if (!h_type)
+		fputs(
 "\n"
 "By default, audio device output is enabled.\n"
 "\n"
@@ -36,9 +58,15 @@ static void print_usage(bool by_arg) {
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
 "  -p \tPrint info for scripts after loading.\n"
-"  -h \tPrint this message.\n"
+"  -h \tPrint this and list help topics, or print help for '-h <topic>'.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+			stderr);
+	if (h_arg) {
+		const char *description = (h_type != NULL) ?
+			"pass '-h' without topic for general usage" :
+			"pass with '-h' as topic";
+		print_help(h_type, description);
+	}
 }
 
 /*
@@ -76,12 +104,15 @@ static bool parse_args(int argc, char **restrict argv,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
 	int i;
+	bool h_arg = false;
+	const char *h_type = NULL;
+	*srate = SSG_DEFAULT_SRATE;
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -95,37 +126,43 @@ NEXT_C:
 		case 'a':
 			if ((*flags & (SSG_ARG_AUDIO_DISABLE |
 					SSG_ARG_MODE_CHECK)) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_FULL |
 				SSG_ARG_AUDIO_ENABLE;
 			break;
 		case 'c':
 			if ((*flags & SSG_ARG_MODE_FULL) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_CHECK;
 			break;
 		case 'e':
 			*flags |= SSG_ARG_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			h_arg = true;
+			if (arg[1] != '\0') goto USAGE;
+			if (*flags != 0) goto USAGE;
+			--argc;
+			++argv;
+			if (argc < 1) goto USAGE;
+			arg = *argv;
+			h_type = arg;
+			goto USAGE;
 		case 'm':
 			if ((*flags & (SSG_ARG_AUDIO_ENABLE |
 					SSG_ARG_MODE_CHECK)) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_FULL |
 				SSG_ARG_AUDIO_DISABLE;
 			break;
 		case 'o':
-			if (arg[1] != '\0') goto INVALID;
+			if (arg[1] != '\0') goto USAGE;
 			if ((*flags & SSG_ARG_MODE_CHECK) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_FULL;
 			--argc;
 			++argv;
-			if (argc < 1) goto INVALID;
+			if (argc < 1) goto USAGE;
 			arg = *argv;
 			*wav_path = arg;
 			continue;
@@ -133,29 +170,29 @@ NEXT_C:
 			*flags |= SSG_ARG_PRINT_INFO;
 			break;
 		case 'r':
-			if (arg[1] != '\0') goto INVALID;
+			if (arg[1] != '\0') goto USAGE;
 			if ((*flags & SSG_ARG_MODE_CHECK) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_FULL;
 			--argc;
 			++argv;
-			if (argc < 1) goto INVALID;
+			if (argc < 1) goto USAGE;
 			arg = *argv;
 			i = get_piarg(arg);
-			if (i < 0) goto INVALID;
+			if (i < 0) goto USAGE;
 			*srate = i;
 			continue;
 		case 'v':
 			print_version();
 			goto CLEAR;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
 	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
+USAGE:
+	print_usage(h_arg, h_type);
 CLEAR:
 	SSG_PtrArr_clear(script_args);
 	return false;
@@ -169,7 +206,7 @@ int main(int argc, char **restrict argv) {
 	SSG_PtrArr prg_objs = (SSG_PtrArr){0};
 	const char *wav_path = NULL;
 	uint32_t options = 0;
-	uint32_t srate = SSG_DEFAULT_SRATE;
+	uint32_t srate = 0;
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;

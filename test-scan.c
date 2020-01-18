@@ -26,7 +26,8 @@
 /*
  * Print command line usage instructions.
  */
-static void print_usage(bool by_arg) {
+static void print_usage(bool h_arg SSG__maybe_unused,
+		const char *restrict h_type SSG__maybe_unused) {
 	fputs(
 "Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
@@ -35,7 +36,7 @@ static void print_usage(bool by_arg) {
 "  -p \tPrint info for scripts after loading.\n"
 "  -h \tPrint this message.\n"
 "  -v \tPrint version.\n",
-	(by_arg) ? stdout : stderr);
+		stderr);
 }
 
 /*
@@ -55,12 +56,14 @@ static void print_version(void) {
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
 		SSG_PtrArr *restrict script_args) {
+	bool h_arg = false;
+	const char *h_type = NULL;
 	for (;;) {
 		const char *arg;
 		--argc;
 		++argv;
 		if (argc < 1) {
-			if (!script_args->count) goto INVALID;
+			if (!script_args->count) goto USAGE;
 			break;
 		}
 		arg = *argv;
@@ -73,16 +76,22 @@ NEXT_C:
 		switch (*arg) {
 		case 'c':
 			if ((*flags & SSG_ARG_MODE_FULL) != 0)
-				goto INVALID;
+				goto USAGE;
 			*flags |= SSG_ARG_MODE_CHECK;
 			break;
 		case 'e':
 			*flags |= SSG_ARG_EVAL_STRING;
 			break;
 		case 'h':
-			if (*flags != 0) goto INVALID;
-			print_usage(true);
-			goto CLEAR;
+			h_arg = true;
+			if (arg[1] != '\0') goto USAGE;
+			if (*flags != 0) goto USAGE;
+			--argc;
+			++argv;
+			if (argc < 1) goto USAGE;
+			arg = *argv;
+			h_type = arg;
+			goto USAGE;
 		case 'p':
 			*flags |= SSG_ARG_PRINT_INFO;
 			break;
@@ -90,13 +99,13 @@ NEXT_C:
 			print_version();
 			goto CLEAR;
 		default:
-			goto INVALID;
+			goto USAGE;
 		}
 		goto NEXT_C;
 	}
 	return (script_args->count != 0);
-INVALID:
-	print_usage(false);
+USAGE:
+	print_usage(h_arg, h_type);
 CLEAR:
 	SSG_PtrArr_clear(script_args);
 	return false;

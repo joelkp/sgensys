@@ -14,6 +14,7 @@
 #pragma once
 #include "../script.h"
 #include "symtab.h"
+#include "../help.h"
 
 /**
  * Linked list of node ranges each for a parse data sublist.

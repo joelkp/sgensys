@@ -372,11 +372,7 @@ static bool scan_symafind(SSG_Scanner *restrict o,
 	}
 	SSG_Scanner_warning(o, &sf_begin,
 			"invalid %s type value; available are:", print_type);
-	fprintf(stderr, "\t%s", stra[0]);
-	for (size_t i = 1; stra[i] != NULL; ++i) {
-		fprintf(stderr, ", %s", stra[i]);
-	}
-	putc('\n', stderr);
+	SSG_print_names(stra, "\t", stderr);
 	return false;
 }
 
