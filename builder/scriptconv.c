@@ -24,21 +24,21 @@
 static const SSG_ProgramOpList blank_oplist = {0};
 
 static SSG__noinline const SSG_ProgramOpList
-*create_ProgramOpList(const SSG_PtrArr *restrict op_list,
+*create_ProgramOpList(const SSG_RefList *restrict op_list,
 		SSG_MemPool *restrict mem) {
-	if (!op_list->count)
+	size_t count = op_list->ref_count;
+	if (!count)
 		return &blank_oplist;
-	uint32_t count = op_list->count;
-	const SSG_ScriptOpData **ops;
-	ops = (const SSG_ScriptOpData**) SSG_PtrArr_ITEMS(op_list);
-	SSG_ProgramOpList *o;
-	o = SSG_MemPool_alloc(mem,
+	SSG_ProgramOpList *o = SSG_MemPool_alloc(mem,
 			sizeof(SSG_ProgramOpList) + sizeof(uint32_t) * count);
 	if (!o)
 		return NULL;
 	o->count = count;
-	for (uint32_t i = 0; i < count; ++i) {
-		o->ids[i] = ops[i]->op_id;
+	size_t i = 0;
+	for (SSG_RefItem *ref = op_list->refs;
+			ref != NULL; ref = ref->next) {
+		SSG_ScriptOpData *op = ref->data;
+		o->ids[i++] = op->op_id;
 	}
 	return o;
 }
@@ -47,12 +47,12 @@ static SSG__noinline const SSG_ProgramOpList
  * Returns the longest carrier duration for the voice event.
  */
 static uint32_t voice_duration(const SSG_ScriptEvData *restrict ve) {
-	SSG_ScriptOpData **ops;
+	if (!ve->carriers)
+		return 0;
 	uint32_t duration_ms = 0;
-	/* FIXME: node list type? */
-	ops = (SSG_ScriptOpData**) SSG_PtrArr_ITEMS(&ve->op_carriers);
-	for (size_t i = 0; i < ve->op_carriers.count; ++i) {
-		SSG_ScriptOpData *op = ops[i];
+	for (SSG_RefItem *ref = ve->carriers->refs;
+			ref != NULL; ref = ref->next) {
+		SSG_ScriptOpData *op = ref->data;
 		if (op->time.v_ms > duration_ms)
 			duration_ms = op->time.v_ms;
 	}
@@ -132,8 +132,8 @@ static void SSG_VoAlloc_clear(SSG_VoAlloc *restrict o) {
  */
 static bool SSG_OpAlloc_get_id(SSG_OpAlloc *restrict oa,
 		const SSG_ScriptOpData *restrict od, uint32_t *restrict op_id) {
-	if (od->op_prev != NULL) {
-		*op_id = od->op_prev->op_id;
+	if (od->prev_use != NULL) {
+		*op_id = od->prev_use->op_id;
 		return true;
 	}
 	SSG_OpAllocState *oas;
@@ -151,9 +151,8 @@ static bool SSG_OpAlloc_get_id(SSG_OpAlloc *restrict oa,
 		return false;
 	oas = &oa->a[*op_id];
 //INIT:
-	oas->fmods = &blank_oplist;
-	oas->pmods = &blank_oplist;
-	oas->amods = &blank_oplist;
+	for (size_t i = 0; i < SSG_POP_USES - 1; ++i)
+		oas->mod_lists[i] = &blank_oplist;
 	return true;
 }
 
@@ -237,8 +236,10 @@ static bool OpDataArr_add_for(OpDataArr *restrict o,
  * \return true, or false on allocation failure
  */
 static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
-		const SSG_PtrArr *restrict src,
+		const SSG_RefList *restrict src,
 		SSG_MemPool *restrict mem) {
+	if (!src)
+		return true; // nothing to do
 	const SSG_ProgramOpList *dst = create_ProgramOpList(src, mem);
 	if (!dst)
 		return false;
@@ -247,12 +248,38 @@ static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
 }
 
 /*
- * Convert the flat script operator data list in two stages,
- * adding all the operator data nodes, then filling in
- * the adjacency lists when all nodes are registered.
+ * Update node modulator lists for updated lists in script data.
  *
  * Ensures non-NULL list pointers for SSG_OpAllocState nodes, while for
  * output nodes, they are non-NULL initially and upon changes.
+ *
+ * \return true, or false on allocation failure
+ */
+static bool ScriptConv_update_modlists(ScriptConv *restrict o,
+		SSG_ProgramOpData *restrict od) {
+	SSG_OpAllocState *oas = &o->oa.a[od->id];
+	const SSG_ScriptOpData *sod = oas->last_sod;
+	const SSG_RefList *sub_lists[SSG_POP_USES - 1] = {0};
+	for (const SSG_RefList *list = sod->mod_lists;
+			list != NULL; list = list->next) {
+		sub_lists[list->list_type - 1] = list;
+	}
+	SSG_VoAllocState *vas = &o->va.a[o->ev->vo_id];
+	for (size_t i = 0; i < SSG_POP_USES - 1; ++i) {
+		if (!update_oplist(&oas->mod_lists[i], sub_lists[i], o->mem))
+			return false;
+	}
+	vas->flags |= SSG_VAS_GRAPH;
+	od->fmods = oas->mod_lists[SSG_POP_FMOD - 1];
+	od->pmods = oas->mod_lists[SSG_POP_PMOD - 1];
+	od->amods = oas->mod_lists[SSG_POP_AMOD - 1];
+	return true;
+}
+
+/*
+ * Convert the flat script operator data list in two stages,
+ * adding all the operator data nodes, then filling in
+ * the adjacency lists when all nodes are registered.
  *
  * \return true, or false on allocation failure
  */
@@ -266,20 +293,8 @@ static bool ScriptConv_convert_ops(ScriptConv *restrict o,
 	}
 	for (size_t i = 0; i < o->ev_op_data.count; ++i) {
 		SSG_ProgramOpData *od = &o->ev_op_data.a[i];
-		SSG_VoAllocState *vas = &o->va.a[o->ev->vo_id];
-		SSG_OpAllocState *oas = &o->oa.a[od->id];
-		SSG_ScriptOpData *sod = oas->last_sod;
 		if (od->params & SSG_POPP_ADJCS) {
-			vas->flags |= SSG_VAS_GRAPH;
-			if (!update_oplist(&oas->fmods, &sod->fmods, o->mem))
-				goto MEM_ERR;
-			od->fmods = oas->fmods;
-			if (!update_oplist(&oas->pmods, &sod->pmods, o->mem))
-				goto MEM_ERR;
-			od->pmods = oas->pmods;
-			if (!update_oplist(&oas->amods, &sod->amods, o->mem))
-				goto MEM_ERR;
-			od->amods = oas->amods;
+			if (!ScriptConv_update_modlists(o, od)) goto MEM_ERR;
 		}
 	}
 	return true;
@@ -327,7 +342,7 @@ static bool ScriptConv_convert_event(ScriptConv *restrict o,
 		ovd->params = vo_params;
 		ovd->pan = e->pan;
 		if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH) {
-			if (!update_oplist(&vas->carriers, &e->op_carriers,
+			if (!update_oplist(&vas->carriers, e->carriers,
 						o->mem)) goto MEM_ERR;
 		}
 		ovd->carriers = vas->carriers;

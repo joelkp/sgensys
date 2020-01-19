@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "ptrarr.h"
+#include "reflist.h"
 #include "program.h"
 
 /**
@@ -41,10 +41,11 @@ typedef struct SSG_ScriptOpData {
 	struct SSG_ScriptOpData *range_next;
 	struct SSG_ScriptEvData *event;
 	struct SSG_ScriptOpData *next_bound;
+	struct SSG_ScriptOpData *prev_use; /* for same op(s) */
 	const char *label;
 	uint32_t op_flags;
 	/* operator parameters */
-	uint32_t op_id;
+	uint32_t op_id; // for scriptconv
 	uint32_t op_params;
 	SSG_Time time;
 	uint32_t silence_ms;
@@ -52,10 +53,8 @@ typedef struct SSG_ScriptOpData {
 	SSG_Ramp freq, freq2;
 	SSG_Ramp amp, amp2;
 	float phase;
-	struct SSG_ScriptOpData *op_prev; /* preceding for same op(s) */
-	SSG_PtrArr op_next; /* all immediate forward refs for op(s) */
-	/* node adjacents in operator linkage graph */
-	SSG_PtrArr fmods, pmods, amods;
+	/* new node adjacents in operator linkage graph */
+	SSG_RefList *mod_lists;
 } SSG_ScriptOpData;
 
 /**
@@ -81,7 +80,7 @@ typedef struct SSG_ScriptEvData {
 	uint32_t vo_params;
 	struct SSG_ScriptEvData *vo_prev; /* preceding event for voice */
 	SSG_Ramp pan;
-	SSG_PtrArr op_carriers;
+	SSG_RefList *carriers;
 } SSG_ScriptEvData;
 
 /**
@@ -112,6 +111,8 @@ typedef struct SSG_ScriptOptions {
 	      def_relfreq;
 } SSG_ScriptOptions;
 
+struct SSG_MemPool;
+
 /**
  * Type returned after processing a file.
  */
@@ -119,6 +120,7 @@ typedef struct SSG_Script {
 	SSG_ScriptEvData *events;
 	const char *name; // currently simply set to the filename
 	SSG_ScriptOptions sopt;
+	struct SSG_MemPool *mem; // internally used, provided until destroy
 } SSG_Script;
 
 SSG_Script *SSG_load_Script(const char *restrict script_arg, bool is_path);

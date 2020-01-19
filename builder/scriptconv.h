@@ -48,9 +48,7 @@ SSG_DEF_ArrType(SSG_VoAlloc, SSG_VoAllocState, _)
  */
 typedef struct SSG_OpAllocState {
 	SSG_ScriptOpData *last_sod;
-	const SSG_ProgramOpList *fmods;
-	const SSG_ProgramOpList *pmods;
-	const SSG_ProgramOpList *amods;
+	const SSG_ProgramOpList *mod_lists[SSG_POP_USES - 1];
 	uint32_t flags;
 	//uint32_t duration_ms;
 } SSG_OpAllocState;

@@ -12,7 +12,6 @@
  */
 
 #include "parser.h"
-#include <stdlib.h>
 
 /*
  * Script data construction from parse data.
@@ -208,6 +207,7 @@ static void flatten_events(SSG_ParseEvData *restrict e) {
 
 typedef struct ParseConv {
 	SSG_ScriptEvData *ev, *first_ev;
+	SSG_MemPool *mem;
 } ParseConv;
 
 /*
@@ -216,7 +216,8 @@ typedef struct ParseConv {
  */
 static bool ParseConv_add_opdata(ParseConv *restrict o,
 		SSG_ParseOpData *restrict pod) {
-	SSG_ScriptOpData *od = calloc(1, sizeof(SSG_ScriptOpData));
+	SSG_ScriptOpData *od = SSG_MemPool_alloc(o->mem,
+			sizeof(SSG_ScriptOpData));
 	if (!od)
 		return false;
 	SSG_ScriptEvData *e = o->ev;
@@ -235,17 +236,13 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	od->amp2 = pod->amp2;
 	od->phase = pod->phase;
 	if (pod->op_prev != NULL) {
-		od->op_prev = pod->op_prev->op_conv;
-		SSG_PtrArr_soft_copy(&od->fmods, &od->op_prev->fmods);
-		SSG_PtrArr_soft_copy(&od->pmods, &od->op_prev->pmods);
-		SSG_PtrArr_soft_copy(&od->amods, &od->op_prev->amods);
+		od->prev_use = pod->op_prev->op_conv;
 	} else {
 		if (pod->use_type == SSG_POP_CARR) {
 			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
 			od->op_flags |= SSG_SDOP_NEW_CARRIER;
 		}
 	}
-	/* op_next */
 	if (!e->op_all.first)
 		e->op_all.first = od;
 	else
@@ -253,7 +250,6 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	e->op_all.last = od;
 	return true;
 //ERROR:
-//	free(od);
 //	return false;
 }
 
@@ -285,41 +281,39 @@ ERROR:
  * visiting all linked operator nodes as they branch out.
  */
 static bool ParseConv_link_ops(ParseConv *restrict o,
-		SSG_PtrArr *restrict od_list,
-		const SSG_NodeRange *restrict pod_list) {
+		SSG_RefList *restrict *od_list,
+		const SSG_NodeRange *restrict pod_list,
+		uint8_t list_type) {
 	if (!pod_list)
 		return true;
+	if (list_type != SSG_POP_CARR ||
+			(o->ev->ev_flags & SSG_SDEV_NEW_OPGRAPH) != 0) {
+		*od_list = SSG_create_RefList(list_type, o->mem);
+		if (!*od_list) goto ERROR;
+	}
 	SSG_ParseOpData *pod = pod_list->first;
-	if (od_list != NULL)
-		SSG_PtrArr_clear(od_list); // rebuild, replace any soft copy
 	for (; pod != NULL; pod = pod->range_next) {
 		// TODO: handle multiple operator nodes
 		if (pod->op_flags & SSG_SDOP_MULTIPLE) continue;
 		SSG_ScriptOpData *od = pod->op_conv;
 		if (!od) goto ERROR;
-		SSG_ScriptEvData *e = od->event;
-		if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH) {
-			// handle linking for carriers separately
-			if ((od->op_flags & SSG_SDOP_NEW_CARRIER) != 0
-				&& !SSG_PtrArr_add(&e->op_carriers, od))
-				goto ERROR;
-		}
-		if (od_list != NULL && !SSG_PtrArr_add(od_list, od))
+		if ((list_type != SSG_POP_CARR ||
+				 (od->op_flags & SSG_SDOP_NEW_CARRIER) != 0) &&
+				!SSG_RefList_add(*od_list, od, 0, o->mem))
 			goto ERROR;
-		SSG_NodeRange *sub_lists[SSG_POP_USES] = {0};
+		SSG_RefList *last_mod_list = NULL;
 		for (SSG_ParseSublist *scope = pod->nest_scopes;
 				scope != NULL; scope = scope->next) {
-			sub_lists[scope->use_type] = &scope->range;
+			SSG_RefList *next_mod_list = NULL;
+			if (!ParseConv_link_ops(o, &next_mod_list,
+						&scope->range,
+						scope->use_type)) goto ERROR;
+			if (!od->mod_lists)
+				od->mod_lists = next_mod_list;
+			else
+				last_mod_list->next = next_mod_list;
+			last_mod_list = next_mod_list;
 		}
-		if (!ParseConv_link_ops(o, &od->fmods,
-					sub_lists[SSG_POP_FMOD]))
-			goto ERROR;
-		if (!ParseConv_link_ops(o, &od->pmods,
-					sub_lists[SSG_POP_PMOD]))
-			goto ERROR;
-		if (!ParseConv_link_ops(o, &od->amods,
-					sub_lists[SSG_POP_AMOD]))
-			goto ERROR;
 	}
 	return true;
 ERROR:
@@ -331,7 +325,8 @@ ERROR:
  */
 static bool ParseConv_add_event(ParseConv *restrict o,
 		SSG_ParseEvData *restrict pe) {
-	SSG_ScriptEvData *e = calloc(1, sizeof(SSG_ScriptEvData));
+	SSG_ScriptEvData *e = SSG_MemPool_alloc(o->mem,
+			sizeof(SSG_ScriptEvData));
 	if (!e)
 		return false;
 	pe->ev_conv = e;
@@ -352,10 +347,10 @@ static bool ParseConv_add_event(ParseConv *restrict o,
 	}
 	e->pan = pe->pan;
 	if (!ParseConv_add_ops(o, &pe->operators)) goto ERROR;
-	if (!ParseConv_link_ops(o, NULL, &pe->operators)) goto ERROR;
+	if (!ParseConv_link_ops(o, &e->carriers,
+				&pe->operators, SSG_POP_CARR)) goto ERROR;
 	return true;
 ERROR:
-	free(e);
 	return false;
 }
 
@@ -374,11 +369,14 @@ static SSG_Script *ParseConv_convert(ParseConv *restrict o,
 		time_event(pe);
 		if (pe->groupfrom != NULL) group_events(pe);
 	}
-	SSG_Script *s = calloc(1, sizeof(SSG_Script));
-	if (!s)
-		return NULL;
+	SSG_MemPool *mem = SSG_create_MemPool(0);
+	if (!mem) goto ERROR;
+	SSG_Script *s = SSG_MemPool_alloc(mem, sizeof(SSG_Script));
+	if (!s) goto ERROR;
 	s->name = p->name;
 	s->sopt = p->sopt;
+	s->mem = mem;
+	o->mem = mem;
 	/*
 	 * Convert events, flattening the remaining list while proceeding.
 	 * Flattening must be done following the timing adjustment pass;
@@ -391,7 +389,7 @@ static SSG_Script *ParseConv_convert(ParseConv *restrict o,
 	s->events = o->first_ev;
 	return s;
 ERROR:
-	SSG_discard_Script(s);
+	SSG_destroy_MemPool(mem);
 	SSG_error("parseconv", "memory allocation failure");
 	return NULL;
 }
@@ -411,40 +409,11 @@ SSG_Script *SSG_load_Script(const char *restrict script_arg, bool is_path) {
 	return o;
 }
 
-/*
- * Destroy the given operator data node.
- */
-static void destroy_operator(SSG_ScriptOpData *restrict op) {
-	SSG_PtrArr_clear(&op->op_next);
-	SSG_PtrArr_clear(&op->fmods);
-	SSG_PtrArr_clear(&op->pmods);
-	SSG_PtrArr_clear(&op->amods);
-	free(op);
-}
-
-/*
- * Destroy the given event data node and all associated operator data nodes.
- */
-static void destroy_event_node(SSG_ScriptEvData *restrict e) {
-	SSG_ScriptOpData *op, *op_next;
-	for (op = e->op_all.first; op != NULL; op = op_next) {
-		op_next = op->range_next;
-		destroy_operator(op);
-	}
-	SSG_PtrArr_clear(&e->op_carriers);
-	free(e);
-}
-
 /**
  * Destroy script data.
  */
 void SSG_discard_Script(SSG_Script *restrict o) {
 	if (!o)
 		return;
-	SSG_ScriptEvData *e, *e_next;
-	for (e = o->events; e != NULL; e = e_next) {
-		e_next = e->next;
-		destroy_event_node(e);
-	}
-	free(o);
+	SSG_destroy_MemPool(o->mem);
 }
