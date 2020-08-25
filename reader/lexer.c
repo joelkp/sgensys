@@ -1,5 +1,5 @@
 /* ssndgen: Script lexer module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -130,7 +130,7 @@ static void handle_numeric_value(SSG_Lexer *restrict o,
 	SSG_ScriptToken *t = &o->token;
 	double d;
 	SSG_Scanner_ungetc(sc);
-	SSG_Scanner_getd(sc, &d, false, NULL);
+	SSG_Scanner_getd(sc, &d, false, NULL, NULL);
 	t->type = SSG_T_VAL_REAL;
 	t->data.f = d;
 	//printf("num == %f\n", d);

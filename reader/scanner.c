@@ -1,5 +1,5 @@
 /* ssndgen: Script scanner module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -730,18 +730,42 @@ bool SSG_Scanner_geti(SSG_Scanner *restrict o,
  * If \p str_len is not NULL, it will be set to the number of characters
  * read. 0 implies that no number was read and that \p var is unchanged.
  *
+ * If \p numconst_f is not NULL, then after possibly reading a numerical
+ * sign, it will be tried, the normal number reading used as fallback if
+ * zero returned.
+ *
  * \return true unless number too large and result truncated
  */
 bool SSG_Scanner_getd(SSG_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
-		size_t *restrict str_len) {
+		size_t *restrict str_len,
+		SSG_ScanNumConst_f numconst_f) {
 	SSG_File *f = o->f;
+	uint8_t c;
+	bool sign = false, minus = false;
 	size_t read_len;
 	prepare_frame(o);
-	o->sf.c = SSG_File_RETC(f);
+	o->sf.c = c = SSG_File_RETC(f);
 	++o->sf.char_num;
-	bool truncated = !SSG_File_getd(f, var, allow_sign, &read_len);
+	/*
+	 * Handle sign here to allow it before named constant too.
+	 * Otherwise the same behavior as SSG_File_getd().
+	 */
+	if (allow_sign && (c == '+' || c == '-')) {
+		SSG_File_INCP(f);
+		if (c == '-') minus = true;
+		c = SSG_File_RETC(f);
+		sign = true;
+	}
+	bool truncated;
+	if (numconst_f && (read_len = numconst_f(o, var)) > 0) {
+		truncated = false;
+	} else {
+		truncated = !SSG_File_getd(f, var, false, &read_len);
+	}
 	if (read_len == 0) {
+		if (sign)
+			SSG_File_DECP(f);
 		o->s_flags |= SSG_SCAN_S_DISCARD;
 		if (str_len) *str_len = 0;
 		return true;
@@ -750,6 +774,8 @@ bool SSG_Scanner_getd(SSG_Scanner *restrict o,
 		SSG_Scanner_warning(o, NULL,
 			"value truncated, too large for 64-bit float");
 	}
+	if (sign) ++read_len;
+	if (minus) *var = - *var;
 	advance_frame(o, read_len - 1, SSG_File_RETC_NC(f));
 	if (str_len) *str_len = read_len;
 	return !truncated;

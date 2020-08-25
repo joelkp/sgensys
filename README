@@ -89,8 +89,6 @@ Each of these keywords is further described in its own section below.
 		a carrier and/or modulator which produces sound
 		for a duration; the "O" is followed by the (initial)
 		wave type, as in "Osin".
-	P	Panning for the voice at the current location; to be
-		followed by the new value.
 	Q	Quit script; end parsing, commenting out all that follows.
 		Optional. (Commenting more generally uses "#", "//",
 		or "/*...*/" syntax.)
@@ -104,15 +102,18 @@ Set parameter default value or other option; runs during parsing.
 Usage: "S", followed by zero or more parameters, each with a value.
 
 Parameters:
-	f	Set default O "f" (frequency, Hz) value; defaults to 444.
-	r	Set default O "r" (relative frequency) value; defaults to 1.
-	t	Set default O "t" (time, seconds) value; defaults to 1.
-	a	Set multiplier for O "a" (amplitude) value, applied when
+	c	Default O "c" (channel mixing) value. Starts at 0.0,
+		i.e. C (center). See "Channel mixing values" for more.
+		Useful as a main way of setting the parameter value.
+	f	Default O "f" (frequency, Hz) value. Starts at 444.
+	r	Default O "r" (relative frequency) value. Starts at 1.
+	t	Default O "t" (time, seconds) value. Starts at 1.
+	a	Multiplier for O "a" (amplitude) value, applied when
 		adding a top-level carrier. If used, this disables automatic
 		down-scaling of amplitude by the number of voices, for
 		manual control instead.
-	n	Sets A4 tuning (Hz) for O "f" (frequency, Hz) value using
-		note syntax; defaults to 444.
+	n	A4 tuning (Hz) for O "f" (frequency, Hz) value using
+		note syntax. Starts at 444.
 
 O: Operator
 -----------
@@ -147,6 +148,15 @@ Wave types:
 	ssr	Square root of sine.
 			Mirrored for the negative half.
 			A softer alternative to "sqr" (square wave).
+
+Channel mixing values:
+	Panning, where 0.0 is centered. Named constants can be used in place
+	of numbers for the three classic channel "modes". Values outside the
+	range of L to R are allowed, amplifying one channel while giving the
+	other a negative amplitude.
+	C	0.0
+	L	(-1.0)
+	R	1.0
 
 Parameters:
 	t	Time duration in seconds. If no t setting is given, the
@@ -204,14 +214,7 @@ Parameters:
 			Works like adding a delay, except it only affects this
 		operator.
 	w	Set the wave type. See list of wave types for values.
-
-P: Panning
-----------
-
-Set the panning (left-right "balance") of the voice associated with
-the present operator(s), affecting the left and right output levels.
-Value range is 0 (all-left) to 1 (all-right). Default is 0.5 (center).
-Panning not at either extreme end will reduce level.
+	c	Channel mixing; see "Channel mixing values".
 		"Value ramp" values are supported; see section.
 
 Q: Quit

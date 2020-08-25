@@ -1,5 +1,5 @@
 /* ssndgen: Script scanner module.
- * Copyright (c) 2014, 2017-2019 Joel K. Pettersson
+ * Copyright (c) 2014, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -149,6 +149,13 @@ static inline SSG_ScanFilter_f SSG_Scanner_getfilter(SSG_Scanner *restrict o,
 	return o->filters[c];
 }
 
+/**
+ * Callback type allowing reading of named constants using SSG_Scanner_getd().
+ * Should return non-zero length if number read and \p var set.
+ */
+typedef size_t (*SSG_ScanNumConst_f)(SSG_Scanner *restrict o,
+		double *restrict var);
+
 uint8_t SSG_Scanner_getc(SSG_Scanner *restrict o);
 uint8_t SSG_Scanner_getc_nospace(SSG_Scanner *restrict o);
 bool SSG_Scanner_tryc(SSG_Scanner *restrict o, uint8_t testc);
@@ -159,7 +166,8 @@ bool SSG_Scanner_geti(SSG_Scanner *restrict o,
 		size_t *restrict str_len);
 bool SSG_Scanner_getd(SSG_Scanner *restrict o,
 		double *restrict var, bool allow_sign,
-		size_t *restrict str_len);
+		size_t *restrict str_len,
+		SSG_ScanNumConst_f numconst_f);
 bool SSG_Scanner_get_symstr(SSG_Scanner *restrict o,
 		SSG_SymStr **restrict symstrp);
 

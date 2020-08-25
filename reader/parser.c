@@ -46,6 +46,7 @@ static const SSG_ScriptOptions def_sopt = {
 	.def_time_ms = 1000,
 	.def_freq = 444.f,
 	.def_relfreq = 1.f,
+	.def_chanmix = 0.f,
 };
 
 static bool init_ScanLookup(ScanLookup *restrict o, SSG_SymTab *restrict st) {
@@ -105,11 +106,9 @@ static void warn_closing_without_opening(SSG_Scanner *restrict o,
 			close_c, open_c);
 }
 
-typedef float (*NumSym_f)(SSG_Scanner *restrict o);
-
 typedef struct NumParser {
 	SSG_Scanner *sc;
-	NumSym_f numsym_f;
+	SSG_ScanNumConst_f numconst_f;
 	SSG_ScanFrame sf_start;
 	bool has_infnum;
 } NumParser;
@@ -134,13 +133,10 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 	}
 	if (c == '(') {
 		num = scan_num_r(o, NUMEXP_SUB, level+1);
-	} else if (o->numsym_f && IS_ALPHA(c)) {
-		SSG_Scanner_ungetc(sc);
-		num = o->numsym_f(sc);
 	} else {
 		size_t read_len;
 		SSG_Scanner_ungetc(sc);
-		SSG_Scanner_getd(sc, &num, false, &read_len);
+		SSG_Scanner_getd(sc, &num, false, &read_len, o->numconst_f);
 		if (read_len == 0)
 			return NAN;
 	}
@@ -198,8 +194,8 @@ DEFER:
 	return num;
 }
 static SSG__noinline bool scan_num(SSG_Scanner *restrict o,
-		NumSym_f scan_numsym, float *restrict var) {
-	NumParser np = {o, scan_numsym, o->sf, false};
+		SSG_ScanNumConst_f scan_numconst, float *restrict var) {
+	NumParser np = {o, scan_numconst, o->sf, false};
 	float num = scan_num_r(&np, NUMEXP_NUM, 0);
 	if (isnan(num))
 		return false;
@@ -227,8 +223,28 @@ static SSG__noinline bool scan_time_val(SSG_Scanner *restrict o,
 	return true;
 }
 
+static size_t scan_chanmix_const(SSG_Scanner *restrict o,
+		double *restrict val) {
+	char c = SSG_File_GETC(o->f);
+	switch (c) {
+	case 'C':
+		*val = 0.f;
+		return 1;
+	case 'L':
+		*val = -1.f;
+		return 1;
+	case 'R':
+		*val = 1.f;
+		return 1;
+	default:
+		SSG_File_DECP(o->f);
+		return 0;
+	}
+}
+
 #define OCTAVES 11
-static float scan_note(SSG_Scanner *restrict o) {
+static size_t scan_note_const(SSG_Scanner *restrict o,
+		double *restrict val) {
 	static const float octaves[OCTAVES] = {
 		(1.f/16.f),
 		(1.f/8.f),
@@ -274,40 +290,47 @@ static float scan_note(SSG_Scanner *restrict o) {
 			25.f/12.f
 		}
 	};
+	SSG_File *f = o->f;
 	ScanLookup *sl = o->data;
+	size_t len = 0, num_len;
+	uint8_t c;
 	float freq;
-	uint8_t c = SSG_Scanner_getc(o);
 	int32_t octave;
 	int32_t semitone = 1, note;
 	int32_t subnote = -1;
-	size_t read_len;
+	++len;
+	c = SSG_File_GETC(f);
 	if (c >= 'a' && c <= 'g') {
 		subnote = c - 'c';
 		if (subnote < 0) /* a, b */
 			subnote += 7;
-		c = SSG_Scanner_getc(o);
+		++len;
+		c = SSG_File_GETC(f);
 	}
 	if (c < 'A' || c > 'G') {
-		SSG_Scanner_warning(o, NULL,
-"invalid note specified - should be C, D, E, F, G, A or B");
-		return NAN;
+		SSG_File_UNGETN(f, len);
+		return 0;
 	}
 	note = c - 'C';
 	if (note < 0) /* A, B */
 		note += 7;
-	c = SSG_Scanner_getc(o);
+	++len;
+	c = SSG_File_GETC(f);
 	if (c == 's')
 		semitone = 2;
 	else if (c == 'f')
 		semitone = 0;
-	else
-		SSG_Scanner_ungetc(o);
-	SSG_Scanner_geti(o, &octave, false, &read_len);
-	if (read_len == 0)
+	else {
+		SSG_File_DECP(f);
+		--len;
+	}
+	SSG_Scanner_geti(o, &octave, false, &num_len);
+	len += num_len;
+	if (num_len == 0)
 		octave = 4;
 	else if (octave >= OCTAVES) {
 		SSG_Scanner_warning(o, NULL,
-"invalid octave specified for note - valid range 0-10");
+"invalid octave specified for note, using 4 (valid range 0-10)");
 		octave = 4;
 	}
 	freq = sl->sopt.A4_freq * (3.f/5.f); /* get C4 */
@@ -316,7 +339,8 @@ static float scan_note(SSG_Scanner *restrict o) {
 		freq *= 1.f + (notes[semitone][note+1] /
 				notes[semitone][note] - 1.f) *
 			(notes[1][subnote] - 1.f);
-	return freq;
+	*val = (double) freq;
+	return len;
 }
 
 static SSG_SymStr *scan_label(SSG_Scanner *restrict o,
@@ -363,9 +387,10 @@ static bool scan_wavetype(SSG_Scanner *restrict o, size_t *restrict found_id) {
 			found_id, "wave type");
 }
 
-static bool scan_ramp_state(SSG_Scanner *restrict o, NumSym_f scan_numsym,
+static bool scan_ramp_state(SSG_Scanner *restrict o,
+		SSG_ScanNumConst_f scan_numconst,
 		SSG_Ramp *restrict ramp, bool mult) {
-	if (!scan_num(o, scan_numsym, &ramp->v0))
+	if (!scan_num(o, scan_numconst, &ramp->v0))
 		return false;
 	if (mult) {
 		ramp->flags |= SSG_RAMPP_STATE_RATIO;
@@ -376,10 +401,11 @@ static bool scan_ramp_state(SSG_Scanner *restrict o, NumSym_f scan_numsym,
 	return true;
 }
 
-static bool scan_ramp(SSG_Scanner *restrict o, NumSym_f scan_numsym,
+static bool scan_ramp(SSG_Scanner *restrict o,
+		SSG_ScanNumConst_f scan_numconst,
 		SSG_Ramp *restrict ramp, bool mult) {
 	if (!SSG_Scanner_tryc(o, '{')) {
-		return scan_ramp_state(o, scan_numsym, ramp, mult);
+		return scan_ramp_state(o, scan_numconst, ramp, mult);
 	}
 	ScanLookup *sl = o->data;
 	bool goal = false;
@@ -412,7 +438,7 @@ static bool scan_ramp(SSG_Scanner *restrict o, NumSym_f scan_numsym,
 				time_set = true;
 			break;
 		case 'v':
-			if (scan_num(o, scan_numsym, &vt))
+			if (scan_num(o, scan_numconst, &vt))
 				goal = true;
 			break;
 		case '}':
@@ -631,15 +657,7 @@ static SSG__noinline void end_operator(ParseLevel *restrict pl) {
 		/*
 		 * Reset all operator state for initial event.
 		 */
-		op->op_params |= SSG_POPP_ADJCS |
-			SSG_POPP_WAVE |
-			SSG_POPP_TIME |
-			SSG_POPP_SILENCE |
-			SSG_POPP_FREQ |
-			SSG_POPP_FREQ2 |
-			SSG_POPP_PHASE |
-			SSG_POPP_AMP |
-			SSG_POPP_AMP2;
+		op->op_params |= SSG_POP_PARAMS;
 	}
 	pl->operator = NULL;
 	pl->last_operator = op;
@@ -656,7 +674,7 @@ static SSG__noinline void end_event(ParseLevel *restrict pl) {
 		/*
 		 * Reset all voice state for initial event.
 		 */
-		e->vo_params |= SSG_PVOP_PAN;
+		e->vo_params |= SSG_PVO_PARAMS & ~SSG_PVOP_GRAPH;
 	}
 	pl->last_event = e;
 	pl->event = NULL;
@@ -665,6 +683,7 @@ static SSG__noinline void end_event(ParseLevel *restrict pl) {
 static void begin_event(ParseLevel *restrict pl,
 		bool is_composite) {
 	SSG_Parser *o = pl->o;
+	ScanLookup *sl = &o->sl;
 	SSG_ParseEvData *e;
 	end_event(pl);
 	pl->event = calloc(1, sizeof(SSG_ParseEvData));
@@ -693,7 +712,7 @@ static void begin_event(ParseLevel *restrict pl,
 		/*
 		 * New voice with initial parameter values.
 		 */
-		e->pan.v0 = 0.5f; /* center */
+		e->pan.v0 = sl->sopt.def_chanmix;
 		e->pan.flags |= SSG_RAMPP_STATE;
 	}
 	if (!pl->group_from)
@@ -934,8 +953,13 @@ static void parse_in_settings(ParseLevel *restrict pl) {
 			if (scan_num(sc, NULL, &sl->sopt.ampmult))
 				sl->sopt.changed |= SSG_SOPT_AMPMULT;
 			break;
+		case 'c':
+			if (scan_num(sc, scan_chanmix_const,
+						&sl->sopt.def_chanmix))
+				sl->sopt.changed |= SSG_SOPT_DEF_CHANMIX;
+			break;
 		case 'f':
-			if (scan_num(sc, scan_note, &sl->sopt.def_freq))
+			if (scan_num(sc, scan_note_const, &sl->sopt.def_freq))
 				sl->sopt.changed |= SSG_SOPT_DEF_FREQ;
 			break;
 		case 'n': {
@@ -952,7 +976,7 @@ static void parse_in_settings(ParseLevel *restrict pl) {
 			break; }
 		case 'r':
 			if (scan_num(sc, NULL, &sl->sopt.def_relfreq))
-				sl->sopt.changed |= SSG_SOPT_DEF_RATIO;
+				sl->sopt.changed |= SSG_SOPT_DEF_RELFREQ;
 			break;
 		case 't':
 			if (scan_time_val(sc, &sl->sopt.def_time_ms))
@@ -988,17 +1012,29 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 	return false;
 }
 
+static bool parse_ev_chanmix(ParseLevel *restrict pl) {
+	SSG_Parser *o = pl->o;
+	SSG_Scanner *sc = o->sc;
+	SSG_ParseEvData *e = pl->event;
+	SSG_ParseOpData *op = pl->operator;
+	if (op->op_flags & SSG_SDOP_NESTED)
+		return true; // reject
+	if (scan_ramp(sc, scan_chanmix_const, &e->pan, false))
+		e->vo_params |= SSG_PVOP_PAN;
+	return false;
+}
+
 static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	SSG_Parser *o = pl->o;
 	SSG_Scanner *sc = o->sc;
 	SSG_ParseOpData *op = pl->operator;
 	if (rel_freq && !(op->op_flags & SSG_SDOP_NESTED))
 		return true; // reject
-	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
-	if (scan_ramp(sc, numsym_f, &op->freq, rel_freq))
+	SSG_ScanNumConst_f numconst_f = rel_freq ? NULL : scan_note_const;
+	if (scan_ramp(sc, numconst_f, &op->freq, rel_freq))
 		op->op_params |= SSG_POPP_FREQ;
 	if (SSG_Scanner_tryc(sc, ',')) {
-		if (scan_ramp(sc, numsym_f, &op->freq2, rel_freq))
+		if (scan_ramp(sc, numconst_f, &op->freq2, rel_freq))
 			op->op_params |= SSG_POPP_FREQ2;
 	}
 	if (SSG_Scanner_tryc(sc, '~') && SSG_Scanner_tryc(sc, '[')) {
@@ -1028,19 +1064,12 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 static void parse_in_event(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	SSG_Scanner *sc = o->sc;
-	SSG_ParseEvData *e = pl->event;
 	SSG_ParseOpData *op = pl->operator;
 	pl->sub_f = parse_in_event;
 	uint8_t c;
 	for (;;) {
 		c = SSG_Scanner_getc_nospace(sc);
 		switch (c) {
-		case 'P':
-			if ((pl->pl_flags & PL_NESTED_SCOPE) != 0)
-				goto DEFER;
-			if (scan_ramp(sc, NULL, &e->pan, false))
-				e->vo_params |= SSG_PVOP_PAN;
-			break;
 		case '\\':
 			if (parse_waittime(pl) && pl->event != NULL) {
 				// FIXME: Buggy update node handling
@@ -1050,6 +1079,9 @@ static void parse_in_event(ParseLevel *restrict pl) {
 			break;
 		case 'a':
 			if (parse_ev_amp(pl)) goto DEFER;
+			break;
+		case 'c':
+			if (parse_ev_chanmix(pl)) goto DEFER;
 			break;
 		case 'f':
 			if (parse_ev_freq(pl, false)) goto DEFER;

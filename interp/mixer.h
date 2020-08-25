@@ -37,7 +37,7 @@ static inline void SSG_Mixer_set_srate(SSG_Mixer *restrict o, uint32_t srate) {
  * Set amplitude scaling.
  */
 static inline void SSG_Mixer_set_scale(SSG_Mixer *restrict o, float scale) {
-	o->scale = scale;
+	o->scale = scale * 0.5f; // half for panning sum
 }
 
 void SSG_Mixer_clear(SSG_Mixer *restrict o);

@@ -93,7 +93,8 @@ enum {
 	SSG_SOPT_A4_FREQ = 1<<1,
 	SSG_SOPT_DEF_TIME = 1<<2,
 	SSG_SOPT_DEF_FREQ = 1<<3,
-	SSG_SOPT_DEF_RATIO = 1<<4,
+	SSG_SOPT_DEF_RELFREQ = 1<<4,
+	SSG_SOPT_DEF_CHANMIX = 1<<5,
 };
 
 /**
@@ -108,7 +109,8 @@ typedef struct SSG_ScriptOptions {
 	/* operator parameter default values (use depends on context) */
 	uint32_t def_time_ms;
 	float def_freq,
-	      def_relfreq;
+	      def_relfreq,
+	      def_chanmix;
 } SSG_ScriptOptions;
 
 struct SSG_MemPool;

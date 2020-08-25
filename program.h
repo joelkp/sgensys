@@ -26,6 +26,7 @@
 enum {
 	SSG_PVOP_GRAPH = 1<<0,
 	SSG_PVOP_PAN = 1<<1,
+	SSG_PVO_PARAMS = (1<<2) - 1
 };
 
 /**
@@ -41,6 +42,7 @@ enum {
 	SSG_POPP_PHASE = 1<<6,
 	SSG_POPP_AMP = 1<<7,
 	SSG_POPP_AMP2 = 1<<8,
+	SSG_POP_PARAMS = (1<<9) - 1
 };
 
 /*
