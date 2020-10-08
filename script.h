@@ -73,7 +73,7 @@ typedef struct SSG_ScriptEvData {
 	uint32_t vo_params;
 	struct SSG_ScriptEvData *vo_prev; /* preceding event for voice */
 	SSG_Ramp pan;
-	SSG_PtrList op_graph;
+	SSG_PtrList op_carriers;
 } SSG_ScriptEvData;
 
 /**

@@ -103,8 +103,8 @@ void SSG_destroy_Generator(SSG_Generator *restrict o) {
 static void set_voice_duration(SSG_Generator *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
-	for (uint32_t i = 0; i < vn->op_count; ++i) {
-		const SSG_ProgramOpRef *or = &vn->op_list[i];
+	for (uint32_t i = 0; i < vn->graph_count; ++i) {
+		const SSG_ProgramOpRef *or = &vn->graph[i];
 		if (or->use != SSG_POP_CARR) continue;
 		OperatorNode *on = &o->operators[or->id];
 		if (on->time > time)
@@ -140,8 +140,9 @@ static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
 			const SSG_ProgramOpData *od = &e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
-			if (params & SSG_POPP_ADJCS)
-				on->adjcs = od->adjcs;
+			if (od->fmods != NULL) on->fmods = od->fmods;
+			if (od->pmods != NULL) on->pmods = od->pmods;
+			if (od->amods != NULL) on->amods = od->amods;
 			if (params & SSG_POPP_WAVE)
 				on->osc.lut = SSG_Osc_LUT(od->wave);
 			if (params & SSG_POPP_TIME) {
@@ -177,9 +178,9 @@ static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
 			const SSG_ProgramVoData *vd = e->vo_data;
 			VoiceNode *vn = &o->voices[e->vo_id];
 			uint32_t params = (vd != NULL) ? vd->params : 0;
-			if (e->op_list != NULL) {
-				vn->op_list = e->op_list;
-				vn->op_count = e->op_count;
+			if (e->graph != NULL) {
+				vn->graph = e->graph;
+				vn->graph_count = e->graph_count;
 			}
 			if (params & SSG_PVOP_PAN)
 				handle_ramp_update(&vn->pan,
@@ -209,16 +210,9 @@ static uint32_t run_block(SSG_Generator *restrict o,
 		OperatorNode *restrict n,
 		float *restrict parent_freq,
 		bool wave_env, uint32_t acc_ind) {
-	uint32_t i, len;
+	uint32_t i, len = buf_len;
 	float *s_buf = *(bufs++), *pm_buf;
 	float *freq, *amp;
-	uint32_t fmodc = 0, pmodc = 0, amodc = 0;
-	if (n->adjcs) {
-		fmodc = n->adjcs->fmodc;
-		pmodc = n->adjcs->pmodc;
-		amodc = n->adjcs->amodc;
-	}
-	len = buf_len;
 	/*
 	 * If silence, zero-fill and delay processing for duration.
 	 */
@@ -259,12 +253,12 @@ static uint32_t run_block(SSG_Generator *restrict o,
 	 */
 	freq = *(bufs++);
 	SSG_Ramp_run(&n->freq, &n->freq_pos, freq, len, o->srate, parent_freq);
-	if (fmodc) {
+	if (n->fmods->count > 0) {
 		float *freq2 = *(bufs++);
 		SSG_Ramp_run(&n->freq2, &n->freq2_pos,
 				freq2, len, o->srate, parent_freq);
-		const uint32_t *fmods = n->adjcs->adjcs;
-		for (i = 0; i < fmodc; ++i)
+		const uint32_t *fmods = n->fmods->ids;
+		for (i = 0; i < n->fmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[fmods[i]],
 					freq, true, i);
 		float *fm_buf = *bufs;
@@ -277,9 +271,9 @@ static uint32_t run_block(SSG_Generator *restrict o,
 	 * If phase modulators linked, get phase offsets for modulation.
 	 */
 	pm_buf = NULL;
-	if (pmodc) {
-		const uint32_t *pmods = &n->adjcs->adjcs[fmodc];
-		for (i = 0; i < pmodc; ++i)
+	if (n->pmods->count > 0) {
+		const uint32_t *pmods = n->pmods->ids;
+		for (i = 0; i < n->pmods->count; ++i)
 			run_block(o, bufs, len, &o->operators[pmods[i]],
 					freq, false, i);
 		pm_buf = *(bufs++);
@@ -290,11 +284,11 @@ static uint32_t run_block(SSG_Generator *restrict o,
 	 */
 	amp = *(bufs++);
 	SSG_Ramp_run(&n->amp, &n->amp_pos, amp, len, o->srate, NULL);
-	if (amodc) {
+	if (n->amods->count > 0) {
 		float *amp2 = *(bufs++);
 		SSG_Ramp_run(&n->amp2, &n->amp2_pos, amp2, len, o->srate, NULL);
-		const uint32_t *amods = &n->adjcs->adjcs[fmodc+pmodc];
-		for (i = 0; i < amodc; ++i)
+		const uint32_t *amods = n->amods->ids;
+		for (i = 0; i < n->amods->count; ++i)
 			run_block(o, bufs, len, &o->operators[amods[i]],
 					freq, true, i);
 		float *am_buf = *bufs;
@@ -332,8 +326,8 @@ static uint32_t run_block(SSG_Generator *restrict o,
 static uint32_t run_voice(SSG_Generator *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	uint32_t out_len = 0;
-	const SSG_ProgramOpRef *ops = vn->op_list;
-	uint32_t opc = vn->op_count;
+	const SSG_ProgramOpRef *ops = vn->graph;
+	uint32_t opc = vn->graph_count;
 	if (!ops)
 		return 0;
 	uint32_t acc_ind = 0;

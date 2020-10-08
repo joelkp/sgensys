@@ -29,7 +29,9 @@ typedef struct OperatorNode {
 	uint32_t time;
 	uint32_t silence;
 	uint8_t flags;
-	const SSG_ProgramOpAdjcs *adjcs;
+	const SSG_ProgramOpList *fmods;
+	const SSG_ProgramOpList *pmods;
+	const SSG_ProgramOpList *amods;
 	SSG_Ramp amp, freq;
 	SSG_Ramp amp2, freq2;
 	uint32_t amp_pos, freq_pos;
@@ -47,8 +49,8 @@ typedef struct VoiceNode {
 	int32_t pos; /* negative for wait time */
 	uint32_t duration;
 	uint8_t flags;
-	const SSG_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SSG_ProgramOpRef *graph;
+	uint32_t graph_count;
 	SSG_Ramp pan;
 	uint32_t pan_pos;
 } VoiceNode;
@@ -56,10 +58,10 @@ typedef struct VoiceNode {
 typedef struct EventNode {
 	uint32_t wait;
 	uint16_t vo_id;
-	const SSG_ProgramOpRef *op_list;
+	const SSG_ProgramOpRef *graph;
 	const SSG_ProgramOpData *op_data;
 	const SSG_ProgramVoData *vo_data;
-	uint32_t op_count;
+	uint32_t graph_count;
 	uint32_t op_data_count;
 } EventNode;
 

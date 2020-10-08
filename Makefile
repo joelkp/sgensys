@@ -77,7 +77,7 @@ $(BIN): $(OBJ)
 test-builder: $(TEST_OBJ)
 	$(CC) $(TEST_OBJ) $(LFLAGS) -o test-builder
 
-arrtype.o: arrtype.c arrtype.h common.h
+arrtype.o: arrtype.c arrtype.h mempool.h common.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
 builder/builder.o: builder/builder.c builder/file.h common.h math.h program.h ptrlist.h ramp.h script.h ssndgen.h time.h wave.h
@@ -98,13 +98,13 @@ builder/parser.o: builder/parser.c builder/parser.h builder/file.h builder/symta
 builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
 	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
 
-builder/scriptconv.o: builder/scriptconv.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/scriptconv.o: builder/scriptconv.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
 builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
 
-builder/voicegraph.o: builder/voicegraph.c builder/scriptconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h common.h
+builder/voicegraph.o: builder/voicegraph.c builder/scriptconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h mempool.h common.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
 
 common.o: common.c common.h
@@ -134,7 +134,7 @@ player/player.o: common.h interp/generator.h math.h player/audiodev.h player/pla
 player/wavfile.o: common.h player/wavfile.c player/wavfile.h
 	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
 
-ptrlist.o: ptrlist.c ptrlist.h common.h
+ptrlist.o: common.h mempool.h ptrlist.c ptrlist.h
 	$(CC) -c $(CFLAGS) ptrlist.c
 
 ramp.o: ramp.c ramp.h time.h math.h common.h

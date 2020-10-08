@@ -301,11 +301,13 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		if (!od) goto ERROR;
 		SSG_ScriptEvData *e = od->event;
 		if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH) {
-			// Handle linking for carriers separately
-			if (od->op_flags & SSG_SDOP_NEW_CARRIER)
-				SSG_PtrList_add(&e->op_graph, od);
+			// handle linking for carriers separately
+			if ((od->op_flags & SSG_SDOP_NEW_CARRIER) != 0
+				&& !SSG_PtrList_add(&e->op_carriers, od))
+				goto ERROR;
 		}
-		if (od_list != NULL) SSG_PtrList_add(od_list, od);
+		if (od_list != NULL && !SSG_PtrList_add(od_list, od))
+			goto ERROR;
 		if (od->op_params & SSG_POPP_ADJCS) {
 			if (!ParseConv_link_ops(o,
 					&od->fmods, &pod->fmods)) goto ERROR;
@@ -427,7 +429,7 @@ static void destroy_event_node(SSG_ScriptEvData *restrict e) {
 		destroy_operator(ops[i]);
 	}
 	SSG_PtrList_clear(&e->op_all);
-	SSG_PtrList_clear(&e->op_graph);
+	SSG_PtrList_clear(&e->op_carriers);
 	free(e);
 }
 

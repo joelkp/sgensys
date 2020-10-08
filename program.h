@@ -24,7 +24,7 @@
  * Voice parameter flags.
  */
 enum {
-	SSG_PVOP_OPLIST = 1<<0,
+	SSG_PVOP_GRAPH = 1<<0,
 	SSG_PVOP_PAN = 1<<1,
 };
 
@@ -72,27 +72,22 @@ typedef struct SSG_ProgramOpRef {
 	uint8_t level; /* > 0 if used as a modulator */
 } SSG_ProgramOpRef;
 
-typedef struct SSG_ProgramOpGraph {
-	uint32_t opc;
-	uint32_t ops[1]; /* sized to opc */
-} SSG_ProgramOpGraph;
-
-typedef struct SSG_ProgramOpAdjcs {
-	uint32_t fmodc;
-	uint32_t pmodc;
-	uint32_t amodc;
-	uint32_t adjcs[1]; /* sized to total number */
-} SSG_ProgramOpAdjcs;
+typedef struct SSG_ProgramOpList {
+	uint32_t count;
+	uint32_t ids[];
+} SSG_ProgramOpList;
 
 typedef struct SSG_ProgramVoData {
-	const SSG_ProgramOpRef *op_list;
-	uint32_t op_count;
+	const SSG_ProgramOpRef *graph;
+	uint32_t graph_count;
 	uint32_t params;
 	SSG_Ramp pan;
 } SSG_ProgramVoData;
 
 typedef struct SSG_ProgramOpData {
-	const SSG_ProgramOpAdjcs *adjcs;
+	const SSG_ProgramOpList *fmods;
+	const SSG_ProgramOpList *pmods;
+	const SSG_ProgramOpList *amods;
 	uint32_t id;
 	uint32_t params;
 	SSG_Time time;
@@ -118,6 +113,8 @@ enum {
 	SSG_PMODE_AMP_DIV_VOICES = 1<<0,
 };
 
+struct SSG_MemPool;
+
 /**
  * Main program type. Contains everything needed for interpretation.
  */
@@ -130,6 +127,7 @@ typedef struct SSG_Program {
 	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
+	struct SSG_MemPool *mem; // internally used, provided until destroy
 } SSG_Program;
 
 struct SSG_Script;

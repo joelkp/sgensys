@@ -42,9 +42,9 @@ static bool init_events(SSG_PreAlloc *restrict o) {
 			const SSG_ProgramVoData *pvd = prg_e->vo_data;
 			uint32_t params = pvd->params;
 			// TODO: Move OpRef stuff to pre-alloc
-			if (params & SSG_PVOP_OPLIST) {
-				e->op_list = pvd->op_list;
-				e->op_count = pvd->op_count;
+			if (params & SSG_PVOP_GRAPH) {
+				e->graph = pvd->graph;
+				e->graph_count = pvd->graph_count;
 			}
 			o->voices[vo_id].pos = -vo_wait_time;
 			vo_wait_time = 0;

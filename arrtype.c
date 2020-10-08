@@ -2,16 +2,21 @@
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include "arrtype.h"
+#include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -76,10 +81,8 @@ bool SSG_ArrType_upsize(void *restrict _o,
  */
 void SSG_ArrType_clear(void *restrict _o) {
 	SSG_ByteArr *restrict o = _o;
-	if (o->a != NULL) {
-		free(o->a);
-		o->a = NULL;
-	}
+	free(o->a);
+	o->a = NULL;
 	o->count = 0;
 	o->asize = 0;
 }
@@ -97,7 +100,7 @@ void SSG_ArrType_clear(void *restrict _o) {
  * \return true unless allocation failed
  */
 bool SSG_ArrType_memdup(void *restrict _o,
-		const void **restrict dst, size_t item_size) {
+		void **restrict dst, size_t item_size) {
 	SSG_ByteArr *restrict o = _o;
 	if (!o->count) {
 		*dst = NULL;
@@ -105,9 +108,37 @@ bool SSG_ArrType_memdup(void *restrict _o,
 	}
 	size_t size = o->count * item_size;
 	void *a = SSG_memdup(o->a, size);
-	if (!a) {
+	if (!a)
 		return false;
+	*dst = a;
+	return true;
+}
+
+/**
+ * Mempool-using variant of the
+ * memdup function for the contents of the given array.
+ *
+ * \p dst will be set to point to the new allocation
+ * (or to NULL if the array was empty). If the array was
+ * non-empty and allocation failed, \p will remain
+ * unaltered.
+ *
+ * (Generic version of the function, to be used through wrapper.)
+ *
+ * \return true unless allocation failed
+ */
+bool SSG_ArrType_mpmemdup(void *restrict _o,
+		void **restrict dst, size_t item_size,
+		SSG_MemPool *restrict mempool) {
+	SSG_ByteArr *restrict o = _o;
+	if (!o->count) {
+		*dst = NULL;
+		return true;
 	}
+	size_t size = o->count * item_size;
+	void *a = SSG_MemPool_memdup(mempool, o->a, size);
+	if (!a)
+		return false;
 	*dst = a;
 	return true;
 }

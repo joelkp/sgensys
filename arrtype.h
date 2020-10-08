@@ -2,13 +2,17 @@
  * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
- * This file and the software of which it is part is distributed under the
- * terms of the GNU Lesser General Public License, either version 3 or (at
- * your option) any later version, WITHOUT ANY WARRANTY, not even of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
  *
- * View the file COPYING for details, or if missing, see
- * <https://www.gnu.org/licenses/>.
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #pragma once
@@ -20,6 +24,8 @@
  *
  * Each concrete type uses inline wrappers around generic methods.
  */
+
+struct SSG_MemPool;
 
 /**
  * Declare array type using \p Name, with \p ElementType.
@@ -58,8 +64,15 @@ MethodPrefix##Name##_clear(Name *restrict o) { \
 } \
 static inline bool SSG__maybe_unused \
 MethodPrefix##Name##_memdup(Name *restrict o, \
-		const ElementType **restrict dst) { \
-	return SSG_ArrType_memdup(o, (const void**) dst, sizeof(ElementType)); \
+		ElementType **restrict dst) { \
+	return SSG_ArrType_memdup(o, (void**) dst, sizeof(ElementType)); \
+} \
+static inline bool SSG__maybe_unused \
+MethodPrefix##Name##_mpmemdup(Name *restrict o, \
+		ElementType **restrict dst, \
+		struct SSG_MemPool *restrict mempool) { \
+	return SSG_ArrType_mpmemdup(o, (void**) dst, \
+		sizeof(ElementType), mempool); \
 }
 
 /**
@@ -81,7 +94,10 @@ bool SSG_ArrType_upsize(void *restrict o,
 		size_t count, size_t item_size);
 void SSG_ArrType_clear(void *restrict o);
 bool SSG_ArrType_memdup(void *restrict o,
-		const void **restrict dst, size_t item_size);
+		void **restrict dst, size_t item_size);
+bool SSG_ArrType_mpmemdup(void *restrict o,
+		void **restrict dst, size_t item_size,
+		struct SSG_MemPool *mempool);
 
 /** Byte (uint8_t) array type. */
 SSG_DEF_ArrType(SSG_ByteArr, uint8_t, )
