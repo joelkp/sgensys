@@ -45,18 +45,6 @@ static void print_version(void) {
 }
 
 /*
- * Command line argument flags.
- */
-enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
-	ARG_ENABLE_AUDIO_DEV = 1<<1,
-	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
-	ARG_PRINT_INFO = 1<<4,
-	ARG_EVAL_STRING = 1<<5,
-};
-
-/*
  * Parse command line arguments.
  *
  * Print usage instructions if requested or args invalid.
@@ -83,19 +71,19 @@ NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'c':
-			if ((*flags & ARG_FULL_RUN) != 0)
+			if ((*flags & SSG_ARG_MODE_FULL) != 0)
 				goto INVALID;
-			*flags |= ARG_ONLY_COMPILE;
+			*flags |= SSG_ARG_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= ARG_EVAL_STRING;
+			*flags |= SSG_ARG_EVAL_STRING;
 			break;
 		case 'h':
 			if (*flags != 0) goto INVALID;
 			print_usage(true);
 			goto CLEAR;
 		case 'p':
-			*flags |= ARG_PRINT_INFO;
+			*flags |= SSG_ARG_PRINT_INFO;
 			break;
 		case 'v':
 			print_version();
@@ -172,8 +160,9 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
+size_t SSG_build(const SSG_PtrList *restrict script_args, uint32_t options,
 		SSG_PtrList *restrict prg_objs) {
+	bool are_paths = !(options & SSG_ARG_EVAL_STRING);
 	size_t built = 0;
 	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
@@ -182,31 +171,6 @@ size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
 		SSG_PtrList_add(prg_objs, prg);
 	}
 	return built;
-}
-
-/*
- * Process the listed scripts.
- *
- * \return true if at least one script succesfully built
- */
-static bool build(const SSG_PtrList *restrict script_args,
-		SSG_PtrList *restrict prg_objs,
-		uint32_t options) {
-	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SSG_build(script_args, are_paths, prg_objs))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SSG_Program **prgs =
-			(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SSG_Program *prg = prgs[i];
-			if (prg != NULL) SSG_Program_print_info(prg);
-		}
-	}
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		discard_programs(prg_objs);
-	}
-	return true;
 }
 
 /**
@@ -218,7 +182,7 @@ int main(int argc, char **restrict argv) {
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
-	bool error = !build(&script_args, &prg_objs, options);
+	bool error = !SSG_build(&script_args, options, &prg_objs);
 	SSG_PtrList_clear(&script_args);
 	if (error)
 		return 1;

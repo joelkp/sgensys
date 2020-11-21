@@ -62,18 +62,6 @@ static int32_t get_piarg(const char *restrict str) {
 }
 
 /*
- * Command line argument flags.
- */
-enum {
-	ARG_FULL_RUN = 1<<0, /* identifies any non-compile-only flags */
-	ARG_ENABLE_AUDIO_DEV = 1<<1,
-	ARG_DISABLE_AUDIO_DEV = 1<<2,
-	ARG_ONLY_COMPILE = 1<<3,
-	ARG_PRINT_INFO = 1<<4,
-	ARG_EVAL_STRING = 1<<5,
-};
-
-/*
  * Parse command line arguments.
  *
  * Print usage instructions if requested or args invalid.
@@ -103,36 +91,36 @@ NEXT_C:
 		if (!*++arg) continue;
 		switch (*arg) {
 		case 'a':
-			if ((*flags & (ARG_DISABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
+			if ((*flags & (SSG_ARG_AUDIO_DISABLE |
+					SSG_ARG_MODE_CHECK)) != 0)
 				goto INVALID;
-			*flags |= ARG_FULL_RUN |
-				ARG_ENABLE_AUDIO_DEV;
+			*flags |= SSG_ARG_MODE_FULL |
+				SSG_ARG_AUDIO_ENABLE;
 			break;
 		case 'c':
-			if ((*flags & ARG_FULL_RUN) != 0)
+			if ((*flags & SSG_ARG_MODE_FULL) != 0)
 				goto INVALID;
-			*flags |= ARG_ONLY_COMPILE;
+			*flags |= SSG_ARG_MODE_CHECK;
 			break;
 		case 'e':
-			*flags |= ARG_EVAL_STRING;
+			*flags |= SSG_ARG_EVAL_STRING;
 			break;
 		case 'h':
 			if (*flags != 0) goto INVALID;
 			print_usage(true);
 			goto CLEAR;
 		case 'm':
-			if ((*flags & (ARG_ENABLE_AUDIO_DEV |
-					ARG_ONLY_COMPILE)) != 0)
+			if ((*flags & (SSG_ARG_AUDIO_ENABLE |
+					SSG_ARG_MODE_CHECK)) != 0)
 				goto INVALID;
-			*flags |= ARG_FULL_RUN |
-				ARG_DISABLE_AUDIO_DEV;
+			*flags |= SSG_ARG_MODE_FULL |
+				SSG_ARG_AUDIO_DISABLE;
 			break;
 		case 'o':
 			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
+			if ((*flags & SSG_ARG_MODE_CHECK) != 0)
 				goto INVALID;
-			*flags |= ARG_FULL_RUN;
+			*flags |= SSG_ARG_MODE_FULL;
 			--argc;
 			++argv;
 			if (argc < 1) goto INVALID;
@@ -140,13 +128,13 @@ NEXT_C:
 			*wav_path = arg;
 			continue;
 		case 'p':
-			*flags |= ARG_PRINT_INFO;
+			*flags |= SSG_ARG_PRINT_INFO;
 			break;
 		case 'r':
 			if (arg[1] != '\0') goto INVALID;
-			if ((*flags & ARG_ONLY_COMPILE) != 0)
+			if ((*flags & SSG_ARG_MODE_CHECK) != 0)
 				goto INVALID;
-			*flags |= ARG_FULL_RUN;
+			*flags |= SSG_ARG_MODE_FULL;
 			--argc;
 			++argv;
 			if (argc < 1) goto INVALID;
@@ -183,45 +171,6 @@ static void discard_programs(SSG_PtrList *restrict prg_objs) {
 	SSG_PtrList_clear(prg_objs);
 }
 
-/*
- * Process the listed scripts.
- *
- * \return true if at least one script succesfully built
- */
-static bool build(const SSG_PtrList *restrict script_args,
-		SSG_PtrList *restrict prg_objs,
-		uint32_t options) {
-	bool are_paths = !(options & ARG_EVAL_STRING);
-	if (!SSG_build(script_args, are_paths, prg_objs))
-		return false;
-	if ((options & ARG_PRINT_INFO) != 0) {
-		const SSG_Program **prgs =
-			(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SSG_Program *prg = prgs[i];
-			if (prg != NULL) SSG_Program_print_info(prg);
-		}
-	}
-	if ((options & ARG_ONLY_COMPILE) != 0) {
-		discard_programs(prg_objs);
-	}
-	return true;
-}
-
-/*
- * Produce results from the list of programs, ignoring NULL entries.
- *
- * \return true unless error occurred
- */
-static bool play(const SSG_PtrList *restrict prg_objs,
-		uint32_t srate, uint32_t options,
-		const char *restrict wav_path) {
-	bool use_audiodev = (wav_path != NULL) ?
-		((options & ARG_ENABLE_AUDIO_DEV) != 0) :
-		((options & ARG_DISABLE_AUDIO_DEV) == 0);
-	return SSG_play(prg_objs, srate, use_audiodev, wav_path);
-}
-
 /**
  * Main function.
  */
@@ -234,12 +183,12 @@ int main(int argc, char **restrict argv) {
 	if (!parse_args(argc, argv, &options, &script_args, &wav_path,
 			&srate))
 		return 0;
-	bool error = !build(&script_args, &prg_objs, options);
+	bool error = !SSG_build(&script_args, options, &prg_objs);
 	SSG_PtrList_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
-		error = !play(&prg_objs, srate, options, wav_path);
+		error = !SSG_play(&prg_objs, srate, options, wav_path);
 		discard_programs(&prg_objs);
 		if (error)
 			return 1;

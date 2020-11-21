@@ -19,8 +19,20 @@
 
 #define SSG_DEFAULT_SRATE 96000
 
-size_t SSG_build(const SSG_PtrList *restrict script_args, bool are_paths,
+/**
+ * Command line options flags.
+ */
+enum {
+	SSG_ARG_MODE_FULL     = 1<<0,
+	SSG_ARG_AUDIO_ENABLE  = 1<<1,
+	SSG_ARG_AUDIO_DISABLE = 1<<2,
+	SSG_ARG_MODE_CHECK    = 1<<3,
+	SSG_ARG_PRINT_INFO    = 1<<4,
+	SSG_ARG_EVAL_STRING   = 1<<5,
+};
+
+size_t SSG_build(const SSG_PtrList *restrict script_args, uint32_t options,
 		SSG_PtrList *restrict prg_objs);
 
 bool SSG_play(const SSG_PtrList *restrict prg_objs, uint32_t srate,
-		bool use_audiodev, const char *restrict wav_path);
+		uint32_t options, const char *restrict wav_path);

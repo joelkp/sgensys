@@ -24,6 +24,7 @@ OBJ=\
 	wave.o \
 	interp/osc.o \
 	interp/mixer.o \
+	interp/prealloc.o \
 	interp/generator.o \
 	player/audiodev.o \
 	player/wavfile.o \
@@ -105,7 +106,7 @@ builder/voicegraph.o: builder/voicegraph.c builder/parseconv.h program.h time.h 
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-interp/generator.o: common.h interp/generator.c interp/generator.h interp/mixer.h interp/osc.h math.h mempool.h program.h ramp.h time.h wave.h
+interp/generator.o: common.h interp/generator.c interp/generator.h interp/mixer.h interp/osc.h interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
 
 interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
@@ -114,7 +115,10 @@ interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
 interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
-mempool.o: mempool.c mempool.h common.h
+interp/prealloc.o: common.h interp/generator.h interp/osc.h interp/prealloc.c interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
+	$(CC) -c $(CFLAGS_FAST) interp/prealloc.c -o interp/prealloc.o
+
+mempool.o: common.h mempool.c mempool.h
 	$(CC) -c $(CFLAGS) mempool.c
 
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c

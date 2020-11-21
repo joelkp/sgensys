@@ -12,60 +12,12 @@
  */
 
 #include "generator.h"
+#include "prealloc.h"
 #include "mixer.h"
-#include "osc.h"
-#include "../mempool.h"
 #include <stdio.h>
 
 #define BUF_LEN SSG_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
-
-/*
- * Operator node flags.
- */
-enum {
-	ON_VISITED = 1<<0,
-	ON_TIME_INF = 1<<1, /* used for SSG_TIMEP_LINKED */
-};
-
-typedef struct OperatorNode {
-	SSG_Osc osc;
-	uint32_t time;
-	uint32_t silence;
-	uint8_t flags;
-	const SSG_ProgramOpAdjcs *adjcs;
-	SSG_Ramp amp, freq;
-	SSG_Ramp amp2, freq2;
-	uint32_t amp_pos, freq_pos;
-	uint32_t amp2_pos, freq2_pos;
-} OperatorNode;
-
-/*
- * Voice node flags.
- */
-enum {
-	VN_INIT = 1<<0,
-};
-
-typedef struct VoiceNode {
-	int32_t pos; /* negative for wait time */
-	uint32_t duration;
-	uint8_t flags;
-	const SSG_ProgramOpRef *op_list;
-	uint32_t op_count;
-	SSG_Ramp pan;
-	uint32_t pan_pos;
-} VoiceNode;
-
-typedef struct EventNode {
-	uint32_t wait;
-	uint16_t vo_id;
-	const SSG_ProgramOpRef *op_list;
-	const SSG_ProgramOpData *op_data;
-	const SSG_ProgramVoData *vo_data;
-	uint32_t op_count;
-	uint32_t op_data_count;
-} EventNode;
 
 struct SSG_Generator {
 	uint32_t srate;
@@ -77,94 +29,39 @@ struct SSG_Generator {
 	uint32_t event_pos;
 	uint16_t voice, vo_count;
 	VoiceNode *voices;
-	uint32_t op_count;
 	OperatorNode *operators;
 	SSG_MemPool *mem;
 };
 
-// maximum number of buffers needed for op nesting depth
-#define COUNT_BUFS(op_nest_depth) ((1 + (op_nest_depth)) * 7)
-
-static bool alloc_for_program(SSG_Generator *restrict o,
-		const SSG_Program *restrict prg) {
-	size_t i;
-
-	i = prg->ev_count;
-	if (i > 0) {
-		o->events = SSG_MemPool_alloc(o->mem, i * sizeof(EventNode*));
-		if (!o->events) goto ERROR;
-		o->ev_count = i;
-	}
-	i = prg->vo_count;
-	if (i > 0) {
-		o->voices = SSG_MemPool_alloc(o->mem, i * sizeof(VoiceNode));
-		if (!o->voices) goto ERROR;
-		o->vo_count = i;
-	}
-	i = prg->op_count;
-	if (i > 0) {
-		o->operators = SSG_MemPool_alloc(o->mem, i * sizeof(OperatorNode));
-		if (!o->operators) goto ERROR;
-		o->op_count = i;
-	}
-	i = COUNT_BUFS(prg->op_nest_depth);
-	if (i > 0) {
-		o->bufs = SSG_MemPool_alloc(o->mem, i * sizeof(Buf));
+static bool init_for_program(SSG_Generator *restrict o,
+		const SSG_Program *restrict prg, uint32_t srate) {
+	SSG_PreAlloc pa;
+	if (!SSG_init_PreAlloc(&pa, prg, o->srate, o->mem))
+		return false;
+	o->events = pa.events;
+	o->ev_count = pa.ev_count;
+	o->operators = pa.operators;
+	o->voices = pa.voices;
+	o->vo_count = pa.vo_count;
+	if (pa.max_bufs > 0) {
+		o->bufs = SSG_MemPool_alloc(o->mem,
+				pa.max_bufs * sizeof(Buf));
 		if (!o->bufs) goto ERROR;
-		o->buf_count = i;
+		o->buf_count = pa.max_bufs;
 	}
 	o->mixer = SSG_create_Mixer();
 	if (!o->mixer) goto ERROR;
-
-	return true;
-ERROR:
-	return false;
-}
-
-static bool convert_program(SSG_Generator *restrict o,
-		const SSG_Program *restrict prg, uint32_t srate) {
-	if (!alloc_for_program(o, prg))
-		return false;
-
-	uint32_t vo_wait_time = 0;
 
 	float scale = 1.f;
 	if ((prg->mode & SSG_PMODE_AMP_DIV_VOICES) != 0)
 		scale /= o->vo_count;
 	SSG_Mixer_set_srate(o->mixer, srate);
 	SSG_Mixer_set_scale(o->mixer, scale);
-	for (size_t i = 0; i < prg->op_count; ++i) {
-		OperatorNode *on = &o->operators[i];
-		SSG_init_Osc(&on->osc, srate);
-	}
-	for (size_t i = 0; i < prg->ev_count; ++i) {
-		const SSG_ProgramEvent *prg_e = &prg->events[i];
-		EventNode *e = SSG_MemPool_alloc(o->mem, sizeof(EventNode));
-		if (!e)
-			return false;
-		uint16_t vo_id = prg_e->vo_id;
-		e->wait = SSG_MS_IN_SAMPLES(prg_e->wait_ms, srate);
-		vo_wait_time += e->wait;
-		//e->vo_id = SSG_PVO_NO_ID;
-		e->vo_id = vo_id;
-		e->op_data = prg_e->op_data;
-		e->op_data_count = prg_e->op_data_count;
-		if (prg_e->vo_data) {
-			const SSG_ProgramVoData *pvd = prg_e->vo_data;
-			uint32_t params = pvd->params;
-			// TODO: Move OpRef stuff to pre-alloc
-			if (params & SSG_PVOP_OPLIST) {
-				e->op_list = pvd->op_list;
-				e->op_count = pvd->op_count;
-			}
-			o->voices[vo_id].pos = -vo_wait_time;
-			vo_wait_time = 0;
-			e->vo_data = prg_e->vo_data;
-		}
-		o->events[i] = e;
-	}
-
+	SSG_fini_PreAlloc(&pa);
 	return true;
+ERROR:
+	SSG_fini_PreAlloc(&pa);
+	return false;
 }
 
 /**
@@ -182,7 +79,7 @@ SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
 	}
 	o->srate = srate;
 	o->mem = mem;
-	if (!convert_program(o, prg, srate)) {
+	if (!init_for_program(o, prg, srate)) {
 		SSG_destroy_Generator(o);
 		return NULL;
 	}

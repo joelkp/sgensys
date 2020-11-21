@@ -25,8 +25,9 @@
 typedef struct SSG_Output {
 	SSG_AudioDev *ad;
 	SSG_WAVFile *wf;
-	uint32_t ad_srate;
 	int16_t *buf;
+	uint32_t ad_srate;
+	uint32_t options;
 	size_t buf_len;
 	size_t ch_len;
 } SSG_Output;
@@ -37,10 +38,16 @@ typedef struct SSG_Output {
  * \return true unless error occurred
  */
 static bool SSG_init_Output(SSG_Output *restrict o, uint32_t srate,
-		bool use_audiodev, const char *restrict wav_path) {
+		uint32_t options, const char *restrict wav_path) {
+	bool use_audiodev = (wav_path != NULL) ?
+		((options & SSG_ARG_AUDIO_ENABLE) != 0) :
+		((options & SSG_ARG_AUDIO_DISABLE) == 0);
 	uint32_t ad_srate = srate;
 	uint32_t max_srate = srate;
 	*o = (SSG_Output){0};
+	o->options = options;
+	if ((options & SSG_ARG_MODE_CHECK) != 0)
+		return true;
 	if (use_audiodev) {
 		o->ad = SSG_open_AudioDev(NUM_CHANNELS, &ad_srate);
 		if (!o->ad)
@@ -91,10 +98,10 @@ static bool SSG_Output_run(SSG_Output *restrict o,
 		return false;
 	size_t len;
 	bool error = false;
-	bool run;
+	bool run = !(o->options & SSG_ARG_MODE_CHECK);
 	use_audiodev = use_audiodev && (o->ad != NULL);
 	use_wavfile = use_wavfile && (o->wf != NULL);
-	do {
+	while (run) {
 		run = SSG_Generator_run(gen, o->buf, o->ch_len, &len);
 		if (use_audiodev && !SSG_AudioDev_write(o->ad, o->buf, len)) {
 			error = true;
@@ -104,12 +111,12 @@ static bool SSG_Output_run(SSG_Output *restrict o,
 			error = true;
 			SSG_error(NULL, "WAV file write failed");
 		}
-	} while (run);
+	}
 	SSG_destroy_Generator(gen);
 	return !error;
 }
 
-/*
+/**
  * Run the listed programs through the audio generator until completion,
  * ignoring NULL entries.
  *
@@ -119,38 +126,40 @@ static bool SSG_Output_run(SSG_Output *restrict o,
  * \return true unless error occurred
  */
 bool SSG_play(const SSG_PtrList *restrict prg_objs, uint32_t srate,
-		bool use_audiodev, const char *restrict wav_path) {
+		uint32_t options, const char *restrict wav_path) {
 	if (!prg_objs->count)
 		return true;
 
 	SSG_Output out;
 	bool status = true;
-	if (!SSG_init_Output(&out, srate, use_audiodev, wav_path)) {
+	if (!SSG_init_Output(&out, srate, options, wav_path)) {
 		status = false;
 		goto CLEANUP;
 	}
+	bool split_gen;
 	if (out.ad != NULL && out.wf != NULL && (out.ad_srate != srate)) {
+		split_gen = true;
 		SSG_warning(NULL,
 "generating audio twice, using different sample rates");
-		const SSG_Program **prgs =
-			(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SSG_Program *prg = prgs[i];
-			if (!prg) continue;
+	} else {
+		split_gen = false;
+		if (out.ad != NULL) srate = out.ad_srate;
+	}
+	const SSG_Program **prgs =
+		(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
+	for (size_t i = 0; i < prg_objs->count; ++i) {
+		const SSG_Program *prg = prgs[i];
+		if (!prg) continue;
+		if ((options & SSG_ARG_PRINT_INFO) != 0)
+			SSG_Program_print_info(prg);
+		if (split_gen) {
 			if (!SSG_Output_run(&out, prg, out.ad_srate,
 						true, false))
 				status = false;
 			if (!SSG_Output_run(&out, prg, srate,
 						false, true))
 				status = false;
-		}
-	} else {
-		if (out.ad != NULL) srate = out.ad_srate;
-		const SSG_Program **prgs =
-			(const SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
-		for (size_t i = 0; i < prg_objs->count; ++i) {
-			const SSG_Program *prg = prgs[i];
-			if (!prg) continue;
+		} else {
 			if (!SSG_Output_run(&out, prg, srate,
 						true, true))
 				status = false;
