@@ -20,6 +20,7 @@
 typedef float Buf[BUF_LEN];
 
 struct SSG_Interp {
+	const SSG_Program *prg;
 	uint32_t srate;
 	uint32_t buf_count;
 	Buf *bufs;
@@ -36,8 +37,10 @@ struct SSG_Interp {
 static bool init_for_program(SSG_Interp *restrict o,
 		const SSG_Program *restrict prg, uint32_t srate) {
 	SSG_PreAlloc pa;
-	if (!SSG_init_PreAlloc(&pa, prg, o->srate, o->mem))
+	if (!SSG_fill_PreAlloc(&pa, prg, srate, o->mem))
 		return false;
+	o->prg = prg;
+	o->srate = srate;
 	o->events = pa.events;
 	o->ev_count = pa.ev_count;
 	o->operators = pa.operators;
@@ -57,17 +60,15 @@ static bool init_for_program(SSG_Interp *restrict o,
 		scale /= o->vo_count;
 	SSG_Mixer_set_srate(o->mixer, srate);
 	SSG_Mixer_set_scale(o->mixer, scale);
-	SSG_fini_PreAlloc(&pa);
 	return true;
 ERROR:
-	SSG_fini_PreAlloc(&pa);
 	return false;
 }
 
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SSG_Interp* SSG_create_Interp(const SSG_Program *restrict prg,
+SSG_Interp *SSG_create_Interp(const SSG_Program *restrict prg,
 		uint32_t srate) {
 	SSG_MemPool *mem = SSG_create_MemPool(0);
 	if (!mem)
@@ -77,7 +78,6 @@ SSG_Interp* SSG_create_Interp(const SSG_Program *restrict prg,
 		SSG_destroy_MemPool(mem);
 		return NULL;
 	}
-	o->srate = srate;
 	o->mem = mem;
 	if (!init_for_program(o, prg, srate)) {
 		SSG_destroy_Interp(o);
@@ -136,8 +136,9 @@ static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
 		 * Voice updates must be done last, to take into account
 		 * updates for their operators.
 		 */
-		for (size_t i = 0; i < e->op_data_count; ++i) {
-			const SSG_ProgramOpData *od = &e->op_data[i];
+		const SSG_ProgramEvent *prg_e = e->prg_e;
+		for (size_t i = 0; i < prg_e->op_data_count; ++i) {
+			const SSG_ProgramOpData *od = &prg_e->op_data[i];
 			OperatorNode *on = &o->operators[od->id];
 			uint32_t params = od->params;
 			if (od->fmods != NULL) on->fmods = od->fmods;
@@ -174,9 +175,9 @@ static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
 				handle_ramp_update(&on->amp2,
 						&on->amp2_pos, &od->amp2);
 		}
-		if (e->vo_id != SSG_PVO_NO_ID) {
-			const SSG_ProgramVoData *vd = e->vo_data;
-			VoiceNode *vn = &o->voices[e->vo_id];
+		if (prg_e->vo_id != SSG_PVO_NO_ID) {
+			const SSG_ProgramVoData *vd = prg_e->vo_data;
+			VoiceNode *vn = &o->voices[prg_e->vo_id];
 			uint32_t params = (vd != NULL) ? vd->params : 0;
 			if (e->graph != NULL) {
 				vn->graph = e->graph;
@@ -187,9 +188,9 @@ static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
 						&vn->pan_pos, &vd->pan);
 			vn->flags |= VN_INIT;
 			vn->pos = 0;
-			if (o->voice > e->vo_id) {
+			if (o->voice > prg_e->vo_id) {
 				/* go back to re-activated node */
-				o->voice = e->vo_id;
+				o->voice = prg_e->vo_id;
 			}
 			set_voice_duration(o, vn);
 		}
@@ -410,7 +411,7 @@ static void check_final_state(SSG_Interp *restrict o) {
 	for (uint16_t i = 0; i < o->vo_count; ++i) {
 		VoiceNode *vn = &o->voices[i];
 		if (!(vn->flags & VN_INIT)) {
-			SSG_warning("generator",
+			SSG_warning("interp",
 "voice %hd left uninitialized (never used)", i);
 		}
 	}
@@ -486,4 +487,55 @@ PROCESS:
 	 * Further calls needed to complete signal.
 	 */
 	return buf_len;
+}
+
+static void print_graph(const SSG_ProgramOpRef *restrict graph,
+		uint32_t count) {
+	static const char *const uses[SSG_POP_USES] = {
+		"CA",
+		"FM",
+		"PM",
+		"AM"
+	};
+	if (!graph)
+		return;
+
+	uint32_t i = 0;
+	uint32_t max_indent = 0;
+	fputs("\n\t    [", stdout);
+	for (;;) {
+		const uint32_t indent = graph[i].level * 2;
+		if (indent > max_indent) max_indent = indent;
+		fprintf(stdout, "%6d:  ", graph[i].id);
+		for (uint32_t j = indent; j > 0; --j)
+			putc(' ', stdout);
+		fputs(uses[graph[i].use], stdout);
+		if (++i == count) break;
+		fputs("\n\t     ", stdout);
+	}
+	for (uint32_t j = max_indent; j > 0; --j)
+		putc(' ', stdout);
+	putc(']', stdout);
+}
+
+/**
+ * Print information about contents to be interpreted.
+ */
+void SSG_Interp_print(const SSG_Interp *restrict o) {
+	SSG_Program_print_info(o->prg, "Program: \"", "\"");
+	for (size_t ev_id = 0; ev_id < o->ev_count; ++ev_id) {
+		const EventNode *ev = o->events[ev_id];
+		const SSG_ProgramEvent *prg_ev = ev->prg_e;
+		const SSG_ProgramVoData *prg_vd = prg_ev->vo_data;
+		fprintf(stdout,
+			"\\%d \tEV %zd \t(VO %hd)",
+			prg_ev->wait_ms, ev_id, prg_ev->vo_id);
+		if (prg_vd != NULL) {
+			SSG_ProgramEvent_print_voice(prg_ev);
+			if (prg_vd->params & SSG_PVOP_GRAPH)
+				print_graph(ev->graph, ev->graph_count);
+		}
+		SSG_ProgramEvent_print_operators(prg_ev);
+		putc('\n', stdout);
+	}
 }

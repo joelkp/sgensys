@@ -78,8 +78,7 @@ typedef struct SSG_ProgramOpList {
 } SSG_ProgramOpList;
 
 typedef struct SSG_ProgramVoData {
-	const SSG_ProgramOpRef *graph;
-	uint32_t graph_count;
+	const SSG_ProgramOpList *carriers;
 	uint32_t params;
 	SSG_Ramp pan;
 } SSG_ProgramVoData;
@@ -124,7 +123,6 @@ typedef struct SSG_Program {
 	uint16_t mode;
 	uint16_t vo_count;
 	uint32_t op_count;
-	uint8_t op_nest_depth;
 	uint32_t duration_ms;
 	const char *name;
 	struct SSG_MemPool *mem; // internally used, provided until destroy
@@ -134,4 +132,8 @@ struct SSG_Script;
 SSG_Program* SSG_build_Program(struct SSG_Script *restrict sd);
 void SSG_discard_Program(SSG_Program *restrict o);
 
-void SSG_Program_print_info(const SSG_Program *restrict o);
+void SSG_Program_print_info(const SSG_Program *restrict o,
+		const char *restrict name_prefix,
+		const char *restrict name_suffix);
+void SSG_ProgramEvent_print_voice(const SSG_ProgramEvent *restrict ev);
+void SSG_ProgramEvent_print_operators(const SSG_ProgramEvent *restrict ev);

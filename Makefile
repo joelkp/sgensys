@@ -20,7 +20,6 @@ OBJ=\
 	reader/symtab.o \
 	reader/parser.o \
 	reader/parseconv.o \
-	builder/voicegraph.o \
 	builder/scriptconv.o \
 	builder/builder.o \
 	interp/osc.o \
@@ -84,13 +83,10 @@ builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h r
 builder/scriptconv.o: arrtype.h builder/scriptconv.c builder/scriptconv.h common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
-builder/voicegraph.o: arrtype.h builder/scriptconv.h builder/voicegraph.c common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
-	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
-
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-interp/interp.o: common.h interp/interp.c interp/interp.h interp/mixer.h interp/osc.h interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
+interp/interp.o: arrtype.h common.h interp/interp.c interp/interp.h interp/mixer.h interp/osc.h interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/interp.c -o interp/interp.o
 
 interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
@@ -99,7 +95,7 @@ interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
 interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
-interp/prealloc.o: common.h interp/interp.h interp/osc.h interp/prealloc.c interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
+interp/prealloc.o: arrtype.h common.h interp/interp.h interp/osc.h interp/prealloc.c interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/prealloc.c -o interp/prealloc.o
 
 mempool.o: common.h mempool.c mempool.h

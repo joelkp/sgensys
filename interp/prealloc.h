@@ -1,5 +1,5 @@
 /* ssndgen: Audio program interpreter pre-run data allocator.
- * Copyright (c) 2020 Joel K. Pettersson
+ * Copyright (c) 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * This file and the software of which it is part is distributed under the
@@ -14,6 +14,7 @@
 #pragma once
 #include "osc.h"
 #include "../program.h"
+#include "../arrtype.h"
 #include "../mempool.h"
 
 /*
@@ -57,14 +58,25 @@ typedef struct VoiceNode {
 
 typedef struct EventNode {
 	uint32_t wait;
-	uint16_t vo_id;
-	const SSG_ProgramOpRef *graph;
-	const SSG_ProgramOpData *op_data;
-	const SSG_ProgramVoData *vo_data;
 	uint32_t graph_count;
-	uint32_t op_data_count;
+	const SSG_ProgramOpRef *graph;
+	const SSG_ProgramEvent *prg_e;
 } EventNode;
 
+SSG_DEF_ArrType(SSG_OpRefArr, SSG_ProgramOpRef, )
+
+/*
+ * Voice data per event during pre-allocation pass.
+ */
+typedef struct SSG_VoiceGraph {
+	SSG_OpRefArr vo_graph;
+	uint32_t nest_level;
+	uint32_t nest_max; // for all traversals
+} SSG_VoiceGraph;
+
+/*
+ * Pre-allocation data. For copying from after filled.
+ */
 typedef struct SSG_PreAlloc {
 	const SSG_Program *prg;
 	uint32_t srate;
@@ -76,9 +88,9 @@ typedef struct SSG_PreAlloc {
 	VoiceNode *voices;
 	OperatorNode *operators;
 	SSG_MemPool *mem;
+	SSG_VoiceGraph vg;
 } SSG_PreAlloc;
 
-bool SSG_init_PreAlloc(SSG_PreAlloc *restrict o,
+bool SSG_fill_PreAlloc(SSG_PreAlloc *restrict o,
 		const SSG_Program *restrict prg, uint32_t srate,
 		SSG_MemPool *restrict mem);
-void SSG_fini_PreAlloc(SSG_PreAlloc *restrict o);

@@ -29,7 +29,7 @@ enum {
  */
 typedef struct SSG_VoAllocState {
 	SSG_ScriptEvData *last_ev;
-	const SSG_ProgramOpList *op_carriers;
+	const SSG_ProgramOpList *carriers;
 	uint32_t flags;
 	uint32_t duration_ms;
 } SSG_VoAllocState;
@@ -39,9 +39,9 @@ SSG_DEF_ArrType(SSG_VoAlloc, SSG_VoAllocState, _)
 /**
  * Operator allocation state flags.
  */
-enum {
-	SSG_OAS_VISITED = 1<<0,
-};
+//enum {
+//	SSG_OAS_VISITED = 1<<0,
+//};
 
 /**
  * Per-operator state used during program data allocation.
@@ -56,34 +56,3 @@ typedef struct SSG_OpAllocState {
 } SSG_OpAllocState;
 
 SSG_DEF_ArrType(SSG_OpAlloc, SSG_OpAllocState, _)
-
-SSG_DEF_ArrType(OpRefArr, SSG_ProgramOpRef, )
-
-/**
- * Voice data, held during program building and set per event.
- */
-typedef struct SSG_VoiceGraph {
-	OpRefArr vo_graph;
-	uint32_t op_nest_level;
-	uint32_t op_nest_max; // for all traversals
-	SSG_VoAlloc *va;
-	SSG_OpAlloc *oa;
-	SSG_MemPool *mem;
-} SSG_VoiceGraph;
-
-/**
- * Initialize instance for use.
- */
-static inline void SSG_init_VoiceGraph(SSG_VoiceGraph *restrict o,
-		SSG_VoAlloc *restrict va,
-		SSG_OpAlloc *restrict oa,
-		SSG_MemPool *restrict mem) {
-	o->va = va;
-	o->oa = oa;
-	o->mem = mem;
-}
-
-void SSG_fini_VoiceGraph(SSG_VoiceGraph *restrict o);
-
-bool SSG_VoiceGraph_set(SSG_VoiceGraph *restrict o,
-		const SSG_ProgramEvent *restrict ev);
