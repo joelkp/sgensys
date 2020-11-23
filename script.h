@@ -12,7 +12,7 @@
  */
 
 #pragma once
-#include "ptrlist.h"
+#include "ptrarr.h"
 #include "program.h"
 
 /**
@@ -45,9 +45,9 @@ typedef struct SSG_ScriptOpData {
 	SSG_Ramp amp, amp2;
 	float phase;
 	struct SSG_ScriptOpData *op_prev; /* preceding for same op(s) */
-	SSG_PtrList op_next; /* all immediate forward refs for op(s) */
+	SSG_PtrArr op_next; /* all immediate forward refs for op(s) */
 	/* node adjacents in operator linkage graph */
-	SSG_PtrList fmods, pmods, amods;
+	SSG_PtrArr fmods, pmods, amods;
 } SSG_ScriptOpData;
 
 /**
@@ -67,13 +67,13 @@ typedef struct SSG_ScriptEvData {
 	struct SSG_ScriptEvData *next;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_PtrList op_all;
+	SSG_PtrArr op_all;
 	/* voice parameters */
 	uint32_t vo_id;
 	uint32_t vo_params;
 	struct SSG_ScriptEvData *vo_prev; /* preceding event for voice */
 	SSG_Ramp pan;
-	SSG_PtrList op_carriers;
+	SSG_PtrArr op_carriers;
 } SSG_ScriptEvData;
 
 /**

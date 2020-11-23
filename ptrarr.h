@@ -1,4 +1,4 @@
-/* ssndgen: Pointer list module.
+/* ssndgen: Pointer array module.
  * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -19,42 +19,42 @@
 #include "common.h"
 
 /**
- * Pointer list type using an array with resizing.
+ * Dynamically sized pointer array. Only supports appending.
  *
- * A soft copy (SSG_PtrList_soft_copy()) references
- * the original underlying array instead of duplicating
- * it, unless/until added to.
+ * A soft copy (SSG_PtrArr_soft_copy()) references
+ * the original items instead of duplicating them,
+ * unless/until the array is added to.
  */
-typedef struct SSG_PtrList {
+typedef struct SSG_PtrArr {
 	void **items;
 	size_t count;
 	size_t old_count;
 	size_t asize;
-} SSG_PtrList;
+} SSG_PtrArr;
 
 /**
  * Get the underlying array holding items.
  *
- * The array pointer is used in place of an array if at most
- * 1 item is held.
+ * The array pointer is used in place of an allocation
+ * if only 1 item is held.
  */
-#define SSG_PtrList_ITEMS(o) \
+#define SSG_PtrArr_ITEMS(o) \
 	((o)->count > 1 ? \
-		(o)->items : \
+		((void**) (o)->items) : \
 		((void**) &(o)->items))
 
 /**
  * Get the item \p i.
  */
-#define SSG_PtrList_GET(o, i) \
-	((void*) SSG_PtrList_ITEMS(o)[i])
+#define SSG_PtrArr_GET(o, i) \
+	((void*) SSG_PtrArr_ITEMS(o)[i])
 
 struct SSG_MemPool;
 
-bool SSG_PtrList_add(SSG_PtrList *restrict o, void *restrict item);
-void SSG_PtrList_clear(SSG_PtrList *restrict o);
-bool SSG_PtrList_memdup(SSG_PtrList *restrict o, void ***restrict dst);
-bool SSG_PtrList_mpmemdup(SSG_PtrList *restrict o, void ***restrict dst,
+bool SSG_PtrArr_add(SSG_PtrArr *restrict o, void *restrict item);
+void SSG_PtrArr_clear(SSG_PtrArr *restrict o);
+bool SSG_PtrArr_memdup(SSG_PtrArr *restrict o, void ***restrict dst);
+bool SSG_PtrArr_mpmemdup(SSG_PtrArr *restrict o, void ***restrict dst,
 		struct SSG_MemPool *restrict mempool);
-void SSG_PtrList_soft_copy(SSG_PtrList *restrict dst,
-		const SSG_PtrList *restrict src);
+void SSG_PtrArr_soft_copy(SSG_PtrArr *restrict dst,
+		const SSG_PtrArr *restrict src);

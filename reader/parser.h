@@ -13,6 +13,7 @@
 
 #pragma once
 #include "../script.h"
+#include "symtab.h"
 
 /**
  * Node type for operator data.
@@ -20,7 +21,7 @@
 typedef struct SSG_ParseOpData {
 	struct SSG_ParseEvData *event;
 	struct SSG_ParseOpData *next_bound;
-	const char *label;
+	SSG_SymStr *label;
 	uint32_t op_flags;
 	/* operator parameters */
 	uint32_t op_params;
@@ -33,7 +34,7 @@ typedef struct SSG_ParseOpData {
 	struct SSG_ParseOpData *op_prev; /* preceding for same op(s) */
 	void *op_conv; /* for parseconv */
 	/* node adjacents in operator linkage graph */
-	SSG_PtrList fmods, pmods, amods;
+	SSG_PtrArr fmods, pmods, amods;
 } SSG_ParseOpData;
 
 /**
@@ -46,7 +47,7 @@ typedef struct SSG_ParseEvData {
 	struct SSG_ParseEvData *composite;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_PtrList operators; /* operator nodes directly linked from event */
+	SSG_PtrArr operators; /* operator nodes directly linked from event */
 	void *ev_conv; /* for parseconv */
 	/* voice parameters */
 	uint32_t vo_params;

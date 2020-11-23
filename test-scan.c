@@ -1,4 +1,4 @@
-/* ssndgen: Test program for experimental builder code.
+/* ssndgen: Test program for experimental reader code.
  * Copyright (c) 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -13,21 +13,22 @@
 
 #include "ssndgen.h"
 #if SSG_TEST_SCANNER
-# include "builder/scanner.h"
+# include "reader/scanner.h"
 #else
-# include "builder/lexer.h"
+# include "reader/lexer.h"
 #endif
-#include "builder/file.h"
+#include "reader/file.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#define NAME "test-scan"
 
 /*
  * Print command line usage instructions.
  */
 static void print_usage(bool by_arg) {
 	fputs(
-"Usage: test-builder [-c] [-p] [-e] <script>...\n"
+"Usage: "NAME" [-c] [-p] [-e] <script>...\n"
 "\n"
 "  -e \tEvaluate strings instead of files.\n"
 "  -c \tCheck scripts only, reporting any errors or requested info.\n"
@@ -41,7 +42,7 @@ static void print_usage(bool by_arg) {
  * Print version.
  */
 static void print_version(void) {
-	puts(SSG_VERSION_STR);
+	puts(NAME" ("SSG_CLINAME_STR") "SSG_VERSION_STR);
 }
 
 /*
@@ -53,7 +54,7 @@ static void print_version(void) {
  */
 static bool parse_args(int argc, char **restrict argv,
 		uint32_t *restrict flags,
-		SSG_PtrList *restrict script_args) {
+		SSG_PtrArr *restrict script_args) {
 	for (;;) {
 		const char *arg;
 		--argc;
@@ -64,7 +65,7 @@ static bool parse_args(int argc, char **restrict argv,
 		}
 		arg = *argv;
 		if (*arg != '-') {
-			SSG_PtrList_add(script_args, (void*) arg);
+			SSG_PtrArr_add(script_args, (void*) arg);
 			continue;
 		}
 NEXT_C:
@@ -97,20 +98,8 @@ NEXT_C:
 INVALID:
 	print_usage(false);
 CLEAR:
-	SSG_PtrList_clear(script_args);
+	SSG_PtrArr_clear(script_args);
 	return false;
-}
-
-/*
- * Discard the programs in the list, ignoring NULL entries,
- * and clearing the list.
- */
-static void discard_programs(SSG_PtrList *restrict prg_objs) {
-	SSG_Program **prgs = (SSG_Program**) SSG_PtrList_ITEMS(prg_objs);
-	for (size_t i = 0; i < prg_objs->count; ++i) {
-		SSG_discard_Program(prgs[i]);
-	}
-	SSG_PtrList_clear(prg_objs);
 }
 
 /*
@@ -121,7 +110,8 @@ static void discard_programs(SSG_PtrList *restrict prg_objs) {
 static SSG_Program *build_program(const char *restrict script_arg,
 		bool is_path) {
 	SSG_Program *o = NULL;
-	SSG_SymTab *symtab = SSG_create_SymTab();
+	SSG_MemPool *mempool = SSG_create_MemPool(0);
+	SSG_SymTab *symtab = SSG_create_SymTab(mempool);
 	if (!symtab) return NULL;
 #if SSG_TEST_SCANNER
 	SSG_Scanner *scanner = SSG_create_Scanner(symtab);
@@ -151,6 +141,7 @@ CLOSE:
 	if (lexer) SSG_destroy_Lexer(lexer);
 #endif
 	SSG_destroy_SymTab(symtab);
+	SSG_destroy_MemPool(mempool);
 	return o;
 }
 
@@ -160,35 +151,47 @@ CLOSE:
  *
  * \return number of programs successfully built
  */
-size_t SSG_build(const SSG_PtrList *restrict script_args, uint32_t options,
-		SSG_PtrList *restrict prg_objs) {
+size_t SSG_build(const SSG_PtrArr *restrict script_args, uint32_t options,
+		SSG_PtrArr *restrict prg_objs) {
 	bool are_paths = !(options & SSG_ARG_EVAL_STRING);
 	size_t built = 0;
-	const char **args = (const char**) SSG_PtrList_ITEMS(script_args);
+	const char **args = (const char**) SSG_PtrArr_ITEMS(script_args);
 	for (size_t i = 0; i < script_args->count; ++i) {
 		SSG_Program *prg = build_program(args[i], are_paths);
 		if (prg != NULL) ++built;
-		SSG_PtrList_add(prg_objs, prg);
+		SSG_PtrArr_add(prg_objs, prg);
 	}
 	return built;
+}
+
+/**
+ * Discard the programs in the list, ignoring NULL entries,
+ * and clearing the list.
+ */
+void SSG_discard(SSG_PtrArr *restrict prg_objs) {
+	SSG_Program **prgs = (SSG_Program**) SSG_PtrArr_ITEMS(prg_objs);
+	for (size_t i = 0; i < prg_objs->count; ++i) {
+		free(prgs[i]); // for placeholder
+	}
+	SSG_PtrArr_clear(prg_objs);
 }
 
 /**
  * Main function.
  */
 int main(int argc, char **restrict argv) {
-	SSG_PtrList script_args = (SSG_PtrList){0};
-	SSG_PtrList prg_objs = (SSG_PtrList){0};
+	SSG_PtrArr script_args = (SSG_PtrArr){0};
+	SSG_PtrArr prg_objs = (SSG_PtrArr){0};
 	uint32_t options = 0;
 	if (!parse_args(argc, argv, &options, &script_args))
 		return 0;
 	bool error = !SSG_build(&script_args, options, &prg_objs);
-	SSG_PtrList_clear(&script_args);
+	SSG_PtrArr_clear(&script_args);
 	if (error)
 		return 1;
 	if (prg_objs.count > 0) {
 		// no audio output
-		discard_programs(&prg_objs);
+		SSG_discard(&prg_objs);
 	}
 
 	return 0;

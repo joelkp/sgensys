@@ -1,4 +1,4 @@
-/* ssndgen: Audio generator module.
+/* ssndgen: Audio program interpreter module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -14,13 +14,12 @@
 #pragma once
 #include "../program.h"
 
-struct SSG_Generator;
-typedef struct SSG_Generator SSG_Generator;
+struct SSG_Interp;
+typedef struct SSG_Interp SSG_Interp;
 
-SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
+SSG_Interp* SSG_create_Interp(const SSG_Program *restrict prg,
 		uint32_t srate) SSG__malloclike;
-void SSG_destroy_Generator(SSG_Generator *restrict o);
+void SSG_destroy_Interp(SSG_Interp *restrict o);
 
-bool SSG_Generator_run(SSG_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
-		size_t *restrict out_len);
+size_t SSG_Interp_run(SSG_Interp *restrict o,
+		int16_t *restrict buf, size_t buf_len);

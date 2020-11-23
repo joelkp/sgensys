@@ -1,4 +1,4 @@
-/* ssndgen: Audio generator module.
+/* ssndgen: Audio program interpreter module.
  * Copyright (c) 2011-2012, 2017-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -11,7 +11,7 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "generator.h"
+#include "interp.h"
 #include "prealloc.h"
 #include "mixer.h"
 #include <stdio.h>
@@ -19,7 +19,7 @@
 #define BUF_LEN SSG_MIX_BUFLEN
 typedef float Buf[BUF_LEN];
 
-struct SSG_Generator {
+struct SSG_Interp {
 	uint32_t srate;
 	uint32_t buf_count;
 	Buf *bufs;
@@ -33,7 +33,7 @@ struct SSG_Generator {
 	SSG_MemPool *mem;
 };
 
-static bool init_for_program(SSG_Generator *restrict o,
+static bool init_for_program(SSG_Interp *restrict o,
 		const SSG_Program *restrict prg, uint32_t srate) {
 	SSG_PreAlloc pa;
 	if (!SSG_init_PreAlloc(&pa, prg, o->srate, o->mem))
@@ -67,12 +67,12 @@ ERROR:
 /**
  * Create instance for program \p prg and sample rate \p srate.
  */
-SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
+SSG_Interp* SSG_create_Interp(const SSG_Program *restrict prg,
 		uint32_t srate) {
 	SSG_MemPool *mem = SSG_create_MemPool(0);
 	if (!mem)
 		return NULL;
-	SSG_Generator *o = SSG_MemPool_alloc(mem, sizeof(SSG_Generator));
+	SSG_Interp *o = SSG_MemPool_alloc(mem, sizeof(SSG_Interp));
 	if (!o) {
 		SSG_destroy_MemPool(mem);
 		return NULL;
@@ -80,7 +80,7 @@ SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
 	o->srate = srate;
 	o->mem = mem;
 	if (!init_for_program(o, prg, srate)) {
-		SSG_destroy_Generator(o);
+		SSG_destroy_Interp(o);
 		return NULL;
 	}
 	SSG_global_init_Wave();
@@ -90,7 +90,7 @@ SSG_Generator* SSG_create_Generator(const SSG_Program *restrict prg,
 /**
  * Destroy instance.
  */
-void SSG_destroy_Generator(SSG_Generator *restrict o) {
+void SSG_destroy_Interp(SSG_Interp *restrict o) {
 	if (!o)
 		return;
 	SSG_destroy_Mixer(o->mixer);
@@ -100,7 +100,7 @@ void SSG_destroy_Generator(SSG_Generator *restrict o) {
 /*
  * Set voice duration according to the current list of operators.
  */
-static void set_voice_duration(SSG_Generator *restrict o,
+static void set_voice_duration(SSG_Interp *restrict o,
 		VoiceNode *restrict vn) {
 	uint32_t time = 0;
 	for (uint32_t i = 0; i < vn->graph_count; ++i) {
@@ -128,7 +128,7 @@ static void handle_ramp_update(SSG_Ramp *restrict ramp,
 /*
  * Process one event; to be called for the event when its time comes.
  */
-static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
+static void handle_event(SSG_Interp *restrict o, EventNode *restrict e) {
 	if (1) /* more types to be added in the future */ {
 		/*
 		 * Set state of operator and/or voice.
@@ -205,7 +205,7 @@ static void handle_event(SSG_Generator *restrict o, EventNode *restrict e) {
  *
  * Returns number of samples generated for the node.
  */
-static uint32_t run_block(SSG_Generator *restrict o,
+static uint32_t run_block(SSG_Interp *restrict o,
 		Buf *restrict bufs, uint32_t buf_len,
 		OperatorNode *restrict n,
 		float *restrict parent_freq,
@@ -323,7 +323,7 @@ static uint32_t run_block(SSG_Generator *restrict o,
  *
  * \return number of samples generated
  */
-static uint32_t run_voice(SSG_Generator *restrict o,
+static uint32_t run_voice(SSG_Interp *restrict o,
 		VoiceNode *restrict vn, uint32_t len) {
 	uint32_t out_len = 0;
 	const SSG_ProgramOpRef *ops = vn->graph;
@@ -361,7 +361,7 @@ static uint32_t run_voice(SSG_Generator *restrict o,
  *
  * \return number of samples generated
  */
-static uint32_t run_for_time(SSG_Generator *restrict o,
+static uint32_t run_for_time(SSG_Interp *restrict o,
 		uint32_t time, int16_t *restrict buf) {
 	int16_t *sp = buf;
 	uint32_t gen_len = 0;
@@ -406,7 +406,7 @@ static uint32_t run_for_time(SSG_Generator *restrict o,
 /*
  * Any error checking following audio generation goes here.
  */
-static void check_final_state(SSG_Generator *restrict o) {
+static void check_final_state(SSG_Interp *restrict o) {
 	for (uint16_t i = 0; i < o->vo_count; ++i) {
 		VoiceNode *vn = &o->voices[i];
 		if (!(vn->flags & VN_INIT)) {
@@ -421,14 +421,10 @@ static void check_final_state(SSG_Generator *restrict o) {
  * buf_len new samples into the interleaved stereo buffer buf. Any values
  * after the end of the signal will be zero'd.
  *
- * If supplied, out_len will be set to the precise length generated
- * for this call, which is buf_len unless the signal ended earlier.
- *
- * \return true unless the signal has ended
+ * \return number of samples generated, buf_len unless signal ended
  */
-bool SSG_Generator_run(SSG_Generator *restrict o,
-		int16_t *restrict buf, size_t buf_len,
-		size_t *restrict out_len) {
+size_t SSG_Interp_run(SSG_Interp *restrict o,
+		int16_t *restrict buf, size_t buf_len) {
 	int16_t *sp = buf;
 	uint32_t i, len = buf_len;
 	for (i = len; i--; sp += 2) {
@@ -479,9 +475,8 @@ PROCESS:
 			/*
 			 * The end.
 			 */
-			if (out_len) *out_len = gen_len;
 			check_final_state(o);
-			return false;
+			return gen_len;
 		}
 		vn = &o->voices[o->voice];
 		if (vn->duration != 0) break;
@@ -490,6 +485,5 @@ PROCESS:
 	/*
 	 * Further calls needed to complete signal.
 	 */
-	if (out_len) *out_len = buf_len;
-	return true;
+	return buf_len;
 }

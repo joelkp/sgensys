@@ -70,10 +70,11 @@ void *SSG_memdup(const void *restrict src, size_t size) SSG__malloclike;
 /* Debug-friendly memory handling? (Slower.) */
 //#define SSG_MEM_DEBUG 1
 
-/* Print hash collision info for symtab. */
-#define SSG_HASHTAB_STATS 0
+/* Print symbol table statistics for testing? */
+//#define SSG_SYMTAB_STATS 0
+
 /* Make test lexer quiet enough to time it. */
 #define SSG_LEXER_QUIET 1
 
-/* Run scanner instead of lexer in 'test-builder' program. */
+/* Run scanner directly instead of lexer in 'test-scan' program. */
 #define SSG_TEST_SCANNER 0

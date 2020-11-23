@@ -141,9 +141,8 @@ uint8_t SSG_Scanner_getc(SSG_Scanner *restrict o);
 uint8_t SSG_Scanner_getc_nospace(SSG_Scanner *restrict o);
 void SSG_Scanner_ungetc(SSG_Scanner *restrict o);
 bool SSG_Scanner_tryc(SSG_Scanner *restrict o, uint8_t testc);
-
-bool SSG_Scanner_getsymstr(SSG_Scanner *restrict o,
-		const void **restrict strp, size_t *restrict lenp);
+bool SSG_Scanner_get_symstr(SSG_Scanner *restrict o,
+		SSG_SymStr **restrict symstrp);
 
 void SSG_Scanner_warning(SSG_Scanner *restrict o,
 		const char *restrict fmt, ...) SSG__printflike(2, 3);

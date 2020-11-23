@@ -12,7 +12,7 @@
  */
 
 #include "scriptconv.h"
-#include "../ptrlist.h"
+#include "../ptrarr.h"
 #include <stdio.h>
 
 /*
@@ -24,13 +24,13 @@
 static const SSG_ProgramOpList blank_oplist = {0};
 
 static SSG__noinline const SSG_ProgramOpList
-*create_ProgramOpList(const SSG_PtrList *restrict op_list,
+*create_ProgramOpList(const SSG_PtrArr *restrict op_list,
 		SSG_MemPool *restrict mem) {
 	if (!op_list->count)
 		return &blank_oplist;
 	uint32_t count = op_list->count;
 	const SSG_ScriptOpData **ops;
-	ops = (const SSG_ScriptOpData**) SSG_PtrList_ITEMS(op_list);
+	ops = (const SSG_ScriptOpData**) SSG_PtrArr_ITEMS(op_list);
 	SSG_ProgramOpList *o;
 	o = SSG_MemPool_alloc(mem,
 			sizeof(SSG_ProgramOpList) + sizeof(uint32_t) * count);
@@ -51,7 +51,7 @@ static uint32_t voice_duration(const SSG_ScriptEvData *restrict ve) {
 	SSG_ScriptOpData **ops;
 	uint32_t duration_ms = 0;
 	/* FIXME: node list type? */
-	ops = (SSG_ScriptOpData**) SSG_PtrList_ITEMS(&ve->op_carriers);
+	ops = (SSG_ScriptOpData**) SSG_PtrArr_ITEMS(&ve->op_carriers);
 	for (size_t i = 0; i < ve->op_carriers.count; ++i) {
 		SSG_ScriptOpData *op = ops[i];
 		if (op->time.v_ms > duration_ms)
@@ -189,7 +189,7 @@ static void SSG_OpAlloc_clear(SSG_OpAlloc *restrict o) {
 SSG_DEF_ArrType(OpDataArr, SSG_ProgramOpData, )
 
 typedef struct ScriptConv {
-	SSG_PtrList ev_list;
+	SSG_PtrArr ev_list;
 	SSG_VoAlloc va;
 	SSG_OpAlloc oa;
 	SSG_ProgramEvent *ev;
@@ -230,7 +230,7 @@ static bool ScriptConv_convert_opdata(ScriptConv *restrict o,
  * \return true, or false on allocation failure
  */
 static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
-		const SSG_PtrList *restrict src,
+		const SSG_PtrArr *restrict src,
 		SSG_MemPool *restrict mem) {
 	const SSG_ProgramOpList *dst = create_ProgramOpList(src, mem);
 	if (!dst)
@@ -250,9 +250,9 @@ static inline bool update_oplist(const SSG_ProgramOpList **restrict dstp,
  * \return true, or false on allocation failure
  */
 static bool ScriptConv_convert_ops(ScriptConv *restrict o,
-		SSG_PtrList *restrict op_list) {
+		SSG_PtrArr *restrict op_list) {
 	SSG_ScriptOpData **ops;
-	ops = (SSG_ScriptOpData**) SSG_PtrList_ITEMS(op_list);
+	ops = (SSG_ScriptOpData**) SSG_PtrArr_ITEMS(op_list);
 	for (size_t i = op_list->old_count; i < op_list->count; ++i) {
 		SSG_ScriptOpData *op = ops[i];
 		uint32_t op_id;
@@ -300,7 +300,7 @@ static bool ScriptConv_convert_event(ScriptConv *restrict o,
 	SSG_VoAllocState *vas = &o->va.a[vo_id];
 	SSG_ProgramEvent *out_ev = SSG_MemPool_alloc(o->mem,
 			sizeof(SSG_ProgramEvent));
-	if (!out_ev || !SSG_PtrList_add(&o->ev_list, out_ev)) goto ERROR;
+	if (!out_ev || !SSG_PtrArr_add(&o->ev_list, out_ev)) goto ERROR;
 	out_ev->wait_ms = e->wait_ms;
 	out_ev->vo_id = vo_id;
 	o->ev = out_ev;
@@ -374,7 +374,7 @@ static SSG_Program *ScriptConv_create_program(ScriptConv *restrict o,
 		SSG_Script *restrict script) {
 	SSG_Program *prg = SSG_MemPool_alloc(o->mem, sizeof(SSG_Program));
 	if (!prg) goto ERROR;
-	if (!SSG_PtrList_mpmemdup(&o->ev_list,
+	if (!SSG_PtrArr_mpmemdup(&o->ev_list,
 				(void***) &prg->events, o->mem)) goto ERROR;
 	prg->ev_count = o->ev_list.count;
 	if (!(script->sopt.changed & SSG_SOPT_AMPMULT)) {
@@ -431,7 +431,7 @@ static SSG_Program *ScriptConv_convert(ScriptConv *restrict o,
 	SSG_OpAlloc_clear(&o->oa);
 	SSG_VoAlloc_clear(&o->va);
 	OpDataArr_clear(&o->ev_op_data);
-	SSG_PtrList_clear(&o->ev_list);
+	SSG_PtrArr_clear(&o->ev_list);
 	SSG_fini_VoiceGraph(&o->ev_vo_graph);
 	SSG_destroy_MemPool(o->mem);
 	SSG_destroy_MemPool(o->tmp);

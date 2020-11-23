@@ -1,4 +1,4 @@
-/* ssndgen: Pointer list module.
+/* ssndgen: Pointer array module.
  * Copyright (c) 2011-2012, 2018-2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
@@ -15,19 +15,19 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include "ptrlist.h"
+#include "ptrarr.h"
 #include "mempool.h"
 #include <stdlib.h>
 #include <string.h>
 
 /**
- * Add a pointer to the end of the given list.
+ * Add a pointer to the end of the given array.
  *
- * If allocation fails, the list will remain unaltered.
+ * If allocation fails, the array will remain unaltered.
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrList_add(SSG_PtrList *restrict o, void *restrict item) {
+bool SSG_PtrArr_add(SSG_PtrArr *restrict o, void *restrict item) {
 	if (!o->asize) {
 		if (o->count == 0) {
 			o->items = (void**) item;
@@ -70,9 +70,9 @@ bool SSG_PtrList_add(SSG_PtrList *restrict o, void *restrict item) {
 }
 
 /**
- * Clear the given list.
+ * Clear the given array.
  */
-void SSG_PtrList_clear(SSG_PtrList *restrict o) {
+void SSG_PtrArr_clear(SSG_PtrArr *restrict o) {
 	if (o->count > o->old_count && o->asize > 0) {
 		free(o->items);
 	}
@@ -83,22 +83,22 @@ void SSG_PtrList_clear(SSG_PtrList *restrict o) {
 }
 
 /**
- * Memdup function for the contents of the given list.
+ * Memdup function for the contents of the given array.
  *
- * \p dst will be set to point to the new allocation
- * (or to NULL if the list was empty). If the list was
+ * \p dst will be set to point to the new allocation,
+ * or to NULL if the array was empty. If the array was
  * non-empty and allocation failed, \p dst will remain
  * unaltered.
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrList_memdup(SSG_PtrList *restrict o, void ***restrict dst) {
+bool SSG_PtrArr_memdup(SSG_PtrArr *restrict o, void ***restrict dst) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SSG_PtrList_ITEMS(o);
+	void **src = SSG_PtrArr_ITEMS(o);
 	void **a = SSG_memdup(src, size);
 	if (!a)
 		return false;
@@ -108,23 +108,23 @@ bool SSG_PtrList_memdup(SSG_PtrList *restrict o, void ***restrict dst) {
 
 /**
  * Mempool-using variant of the
- * memdup function for the contents of the given list.
+ * memdup function for the contents of the given array.
  *
- * \p dst will be set to point to the new allocation
- * (or to NULL if the list was empty). If the list was
+ * \p dst will be set to point to the new allocation,
+ * or to NULL if the array was empty. If the array was
  * non-empty and allocation failed, \p dst will remain
  * unaltered.
  *
  * \return true unless allocation failed
  */
-bool SSG_PtrList_mpmemdup(SSG_PtrList *restrict o, void ***restrict dst,
+bool SSG_PtrArr_mpmemdup(SSG_PtrArr *restrict o, void ***restrict dst,
 		SSG_MemPool *restrict mempool) {
 	if (!o->count) {
 		*dst = NULL;
 		return true;
 	}
 	size_t size = o->count * sizeof(void*);
-	void **src = SSG_PtrList_ITEMS(o);
+	void **src = SSG_PtrArr_ITEMS(o);
 	void **a = SSG_MemPool_memdup(mempool, src, size);
 	if (!a)
 		return false;
@@ -133,7 +133,7 @@ bool SSG_PtrList_mpmemdup(SSG_PtrList *restrict o, void ***restrict dst,
 }
 
 /**
- * Copy the list \p src to \p dst (clearing dst first if needed);
+ * Copy the array \p src to \p dst (clearing dst first if needed);
  * to save memory, dst will actually merely reference the data in
  * src unless/until added to. It is assumed that after copying,
  * src will no longer be added to (unless dst is first cleared
@@ -142,14 +142,14 @@ bool SSG_PtrList_mpmemdup(SSG_PtrList *restrict o, void ***restrict dst,
  * \a old_count will be set to the count of src, so that iteration
  * beginning at that value will ignore copied entries.
  *
- * Regardless of the order of list clearing, once clearing is
+ * Regardless of the order of array clearing, once clearing is
  * taking place, by only accessing items (pointer dereferencing)
  * through iteration between \a old_count and \a count, all
  * accessing of freed memory is avoided.
  */
-void SSG_PtrList_soft_copy(SSG_PtrList *restrict dst,
-		const SSG_PtrList *restrict src) {
-	SSG_PtrList_clear(dst);
+void SSG_PtrArr_soft_copy(SSG_PtrArr *restrict dst,
+		const SSG_PtrArr *restrict src) {
+	SSG_PtrArr_clear(dst);
 	dst->items = src->items;
 	dst->count = src->count;
 	dst->old_count = src->count;

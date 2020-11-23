@@ -13,9 +13,10 @@
 
 #pragma once
 #include "program.h"
-#include "ptrlist.h"
+#include "ptrarr.h"
 
-#define SSG_VERSION_STR "ssndgen v0.2-dev"
+#define SSG_CLINAME_STR "ssndgen"
+#define SSG_VERSION_STR "v0.2-dev"
 
 #define SSG_DEFAULT_SRATE 96000
 
@@ -31,8 +32,9 @@ enum {
 	SSG_ARG_EVAL_STRING   = 1<<5,
 };
 
-size_t SSG_build(const SSG_PtrList *restrict script_args, uint32_t options,
-		SSG_PtrList *restrict prg_objs);
+size_t SSG_build(const SSG_PtrArr *restrict script_args, uint32_t options,
+		SSG_PtrArr *restrict prg_objs);
+void SSG_discard(SSG_PtrArr *restrict prg_objs);
 
-bool SSG_play(const SSG_PtrList *restrict prg_objs, uint32_t srate,
+bool SSG_play(const SSG_PtrArr *restrict prg_objs, uint32_t srate,
 		uint32_t options, const char *restrict wav_path);

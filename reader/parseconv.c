@@ -33,7 +33,7 @@ static void group_events(SSG_ParseEvData *restrict to) {
 	uint32_t wait = 0, waitcount = 0;
 	for (e = to->groupfrom; e != e_after; ) {
 		SSG_ParseOpData **ops;
-		ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&e->operators);
+		ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&e->operators);
 		for (i = 0; i < e->operators.count; ++i) {
 			SSG_ParseOpData *op = ops[i];
 			if (wait < op->time.v_ms)
@@ -46,7 +46,7 @@ static void group_events(SSG_ParseEvData *restrict to) {
 	}
 	for (e = to->groupfrom; e != e_after; ) {
 		SSG_ParseOpData **ops;
-		ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&e->operators);
+		ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&e->operators);
 		for (i = 0; i < e->operators.count; ++i) {
 			SSG_ParseOpData *op = ops[i];
 			if (!(op->time.flags & SSG_TIMEP_SET)) {
@@ -96,15 +96,15 @@ static void time_operator(SSG_ParseOpData *restrict op) {
 	}
 	size_t i;
 	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->fmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->fmods);
 	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		time_operator(ops[i]);
 	}
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->pmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->pmods);
 	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		time_operator(ops[i]);
 	}
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->amods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->amods);
 	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		time_operator(ops[i]);
 	}
@@ -118,7 +118,7 @@ static void time_event(SSG_ParseEvData *restrict e) {
 	// e->pan.flags |= SSG_RAMPP_TIME; // TODO: revisit semantics
 	size_t i;
 	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&e->operators);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&e->operators);
 	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		time_operator(ops[i]);
 	}
@@ -128,7 +128,7 @@ static void time_event(SSG_ParseEvData *restrict e) {
 	if (e->composite != NULL) {
 		SSG_ParseEvData *ce = e->composite;
 		SSG_ParseOpData *ce_op, *ce_op_prev, *e_op;
-		ce_op = (SSG_ParseOpData*) SSG_PtrList_GET(&ce->operators, 0),
+		ce_op = (SSG_ParseOpData*) SSG_PtrArr_GET(&ce->operators, 0),
 		ce_op_prev = ce_op->op_prev,
 		e_op = ce_op_prev;
 		e_op->time.flags |= SSG_TIMEP_SET; /* always used from now on */
@@ -154,7 +154,7 @@ static void time_event(SSG_ParseEvData *restrict e) {
 			ce = ce->next;
 			if (!ce) break;
 			ce_op = (SSG_ParseOpData*)
-				SSG_PtrList_GET(&ce->operators, 0);
+				SSG_PtrArr_GET(&ce->operators, 0);
 		}
 	}
 }
@@ -253,7 +253,7 @@ static bool ParseConv_add_opdata(ParseConv *restrict o,
 	/* fmods */
 	/* pmods */
 	/* amods */
-	if (!SSG_PtrList_add(&o->ev->op_all, od)) goto ERROR;
+	if (!SSG_PtrArr_add(&o->ev->op_all, od)) goto ERROR;
 	return true;
 
 ERROR:
@@ -266,9 +266,9 @@ ERROR:
  * visiting new operator nodes as they branch out.
  */
 static bool ParseConv_add_ops(ParseConv *restrict o,
-		const SSG_PtrList *restrict pod_list) {
+		const SSG_PtrArr *restrict pod_list) {
 	SSG_ParseOpData **pods;
-	pods = (SSG_ParseOpData**) SSG_PtrList_ITEMS(pod_list);
+	pods = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(pod_list);
 	for (size_t i = pod_list->old_count; i < pod_list->count; ++i) {
 		SSG_ParseOpData *pod = pods[i];
 		// TODO: handle multiple operator nodes
@@ -289,10 +289,10 @@ ERROR:
  * visiting all operator nodes as they branch out.
  */
 static bool ParseConv_link_ops(ParseConv *restrict o,
-		SSG_PtrList *restrict od_list,
-		const SSG_PtrList *restrict pod_list) {
+		SSG_PtrArr *restrict od_list,
+		const SSG_PtrArr *restrict pod_list) {
 	SSG_ParseOpData **pods;
-	pods = (SSG_ParseOpData**) SSG_PtrList_ITEMS(pod_list);
+	pods = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(pod_list);
 	for (size_t i = 0; i < pod_list->count; ++i) {
 		SSG_ParseOpData *pod = pods[i];
 		// TODO: handle multiple operator nodes
@@ -303,10 +303,10 @@ static bool ParseConv_link_ops(ParseConv *restrict o,
 		if (e->ev_flags & SSG_SDEV_NEW_OPGRAPH) {
 			// handle linking for carriers separately
 			if ((od->op_flags & SSG_SDOP_NEW_CARRIER) != 0
-				&& !SSG_PtrList_add(&e->op_carriers, od))
+				&& !SSG_PtrArr_add(&e->op_carriers, od))
 				goto ERROR;
 		}
-		if (od_list != NULL && !SSG_PtrList_add(od_list, od))
+		if (od_list != NULL && !SSG_PtrArr_add(od_list, od))
 			goto ERROR;
 		if (od->op_params & SSG_POPP_ADJCS) {
 			if (!ParseConv_link_ops(o,
@@ -411,10 +411,10 @@ SSG_Script *SSG_load_Script(struct SSG_File *restrict f) {
  * Destroy the given operator data node.
  */
 static void destroy_operator(SSG_ScriptOpData *restrict op) {
-	SSG_PtrList_clear(&op->op_next);
-	SSG_PtrList_clear(&op->fmods);
-	SSG_PtrList_clear(&op->pmods);
-	SSG_PtrList_clear(&op->amods);
+	SSG_PtrArr_clear(&op->op_next);
+	SSG_PtrArr_clear(&op->fmods);
+	SSG_PtrArr_clear(&op->pmods);
+	SSG_PtrArr_clear(&op->amods);
 	free(op);
 }
 
@@ -424,12 +424,12 @@ static void destroy_operator(SSG_ScriptOpData *restrict op) {
 static void destroy_event_node(SSG_ScriptEvData *restrict e) {
 	size_t i;
 	SSG_ScriptOpData **ops;
-	ops = (SSG_ScriptOpData**) SSG_PtrList_ITEMS(&e->op_all);
+	ops = (SSG_ScriptOpData**) SSG_PtrArr_ITEMS(&e->op_all);
 	for (i = e->op_all.old_count; i < e->op_all.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&e->op_all);
-	SSG_PtrList_clear(&e->op_carriers);
+	SSG_PtrArr_clear(&e->op_all);
+	SSG_PtrArr_clear(&e->op_carriers);
 	free(e);
 }
 

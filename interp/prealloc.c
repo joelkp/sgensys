@@ -1,4 +1,4 @@
-/* ssndgen: Audio generator pre-run data allocator.
+/* ssndgen: Audio program interpreter pre-run data allocator.
  * Copyright (c) 2020 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *

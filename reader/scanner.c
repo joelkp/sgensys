@@ -635,16 +635,13 @@ bool SSG_Scanner_tryc(SSG_Scanner *restrict o, uint8_t testc) {
 
 /**
  * Get identifier string. If a valid symbol string was read,
- * the copy set to \p strp will be the unique copy stored
- * in the symbol table. If no string was read,
- * \p strp will be set to NULL.
- *
- * If not NULL, \p lenp will be set to the length of the string.
+ * then \a symstr will be set to the unique item
+ * stored in the symbol table, otherwise to NULL.
  *
  * \return true if string was short enough to be read in full
  */
-bool SSG_Scanner_getsymstr(SSG_Scanner *restrict o,
-		const void **restrict strp, size_t *restrict lenp) {
+bool SSG_Scanner_get_symstr(SSG_Scanner *restrict o,
+		SSG_SymStr **restrict symstrp) {
 	SSG_File *f = o->f;
 	size_t len;
 	bool truncated;
@@ -652,8 +649,7 @@ bool SSG_Scanner_getsymstr(SSG_Scanner *restrict o,
 	SSG_File_DECP(f);
 	truncated = !read_symstr(f, o->strbuf, STRBUF_LEN, &len);
 	if (len == 0) {
-		*strp = NULL;
-		if (lenp) *lenp = 0;
+		*symstrp = NULL;
 		return true;
 	}
 	o->cf.char_num += len - 1;
@@ -662,13 +658,11 @@ bool SSG_Scanner_getsymstr(SSG_Scanner *restrict o,
 "limiting identifier to %d characters", (STRBUF_LEN - 1));
 		o->cf.char_num += SSG_File_skipstr(f, filter_symchar);
 	}
-	const char *pool_str;
-	pool_str = SSG_SymTab_pool_str(o->symtab, o->strbuf, len);
-	if (pool_str == NULL) {
+	SSG_SymStr *symstr = SSG_SymTab_get_symstr(o->symtab, o->strbuf, len);
+	if (!symstr) {
 		SSG_Scanner_error(o, "failed to register string '%s'",
 				o->strbuf);
 	}
-	*strp = pool_str;
-	if (lenp) *lenp = len;
+	*symstrp = symstr;
 	return !truncated;
 }

@@ -11,7 +11,6 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#include "symtab.h"
 #include "file.h"
 #include "parser.h"
 #include "../math.h"
@@ -47,6 +46,9 @@ static uint8_t filter_symchar(SSG_File *restrict f SSG__maybe_unused,
  * Parser scanner
  */
 
+#define SYMKEY_MAXLEN 79
+#define SYMKEY_MAXLEN_A "79"
+
 typedef struct ScanLookup {
 	SSG_ScriptOptions sopt;
 	const char *const*wave_names;
@@ -61,6 +63,7 @@ typedef struct PScanner {
 	bool stash;
 	SSG_SymTab *st;
 	ScanLookup *sl;
+	char *symbuf;
 } PScanner;
 
 static void init_scanner(PScanner *restrict o,
@@ -72,11 +75,13 @@ static void init_scanner(PScanner *restrict o,
 	o->line = 1;
 	o->st = st;
 	o->sl = sl;
+	o->symbuf = calloc(SYMKEY_MAXLEN + 1, sizeof(char));
 }
 
 static void fini_scanner(PScanner *restrict o) {
 	SSG_File_close(o->f);
 	o->f = NULL; // freed by invoker
+	free(o->symbuf);
 }
 
 /*
@@ -382,47 +387,45 @@ static float scan_note(PScanner *restrict o) {
 	return freq;
 }
 
-#define LABEL_BUFLEN 80
-#define LABEL_MAXLEN_S "79"
-typedef char LabelBuf[LABEL_BUFLEN];
-static size_t scan_label(PScanner *restrict o, LabelBuf label, char op) {
+static SSG_SymStr *scan_label(PScanner *restrict o, char op) {
 	char nolabel_msg[] = "ignoring ? without label name";
 	SSG_File *f = o->f;
 	size_t len = 0;
 	bool truncated;
 	nolabel_msg[9] = op; /* replace ? */
-	truncated = !SSG_File_getstr(f, label, LABEL_BUFLEN, &len, filter_symchar);
+	truncated = !SSG_File_getstr(f, o->symbuf, SYMKEY_MAXLEN + 1,
+			&len, filter_symchar);
 	if (len == 0) {
 		scan_warning(o, nolabel_msg);
 	}
 	if (truncated) {
 		o->c = SSG_File_RETC(f);
 		scan_warning(o,
-"limiting label name to "LABEL_MAXLEN_S" characters");
+"limiting label name to "SYMKEY_MAXLEN_A" characters");
 		SSG_File_skipstr(f, filter_symchar);
 	}
 	o->c = SSG_File_RETC(f);
-	return len;
+	return SSG_SymTab_get_symstr(o->st, o->symbuf, len);
 }
 
 static bool scan_symafind(PScanner *restrict o,
 		const char *const*restrict stra,
 		size_t n, size_t *restrict found_i) {
-	LabelBuf buf;
 	SSG_File *f = o->f;
 	size_t len = 0;
 	bool truncated;
-	truncated = !SSG_File_getstr(f, buf, LABEL_BUFLEN, &len, filter_symchar);
+	truncated = !SSG_File_getstr(f, o->symbuf, SYMKEY_MAXLEN + 1,
+			&len, filter_symchar);
 	if (len == 0) {
 		scan_warning(o, "label missing");
 		return false;
 	}
 	if (truncated) {
 		scan_warning(o,
-"limiting label name to "LABEL_MAXLEN_S" characters");
+"limiting label name to "SYMKEY_MAXLEN_A" characters");
 		SSG_File_skipstr(f, filter_symchar);
 	}
-	const char *key = SSG_SymTab_pool_str(o->st, buf, len);
+	const char *key = SSG_SymTab_pool_str(o->st, o->symbuf, len);
 	for (size_t i = 0; i < n; ++i) {
 		if (stra[i] == key) {
 			o->c = SSG_File_RETC(f);
@@ -543,6 +546,7 @@ typedef struct SSG_Parser {
 	PScanner sc;
 	ScanLookup sl;
 	SSG_SymTab *st;
+	SSG_MemPool *mem;
 	uint32_t call_level;
 	uint32_t scope_id;
 	/* node state */
@@ -570,7 +574,8 @@ static const SSG_ScriptOptions def_sopt = {
  */
 static void init_parser(SSG_Parser *restrict o) {
 	*o = (SSG_Parser){0};
-	o->st = SSG_create_SymTab();
+	o->mem = SSG_create_MemPool(0);
+	o->st = SSG_create_SymTab(o->mem);
 	o->sl.sopt = def_sopt;
 	o->sl.wave_names = SSG_SymTab_pool_stra(o->st,
 			SSG_Wave_names, SSG_WAVE_TYPES);
@@ -583,6 +588,7 @@ static void init_parser(SSG_Parser *restrict o) {
  */
 static void fini_parser(SSG_Parser *restrict o) {
 	SSG_destroy_SymTab(o->st);
+	SSG_destroy_MemPool(o->mem);
 }
 
 /*
@@ -629,7 +635,7 @@ typedef struct ParseLevel {
 	SSG_ParseOpData *parent_op, *op_prev;
 	uint8_t linktype;
 	uint8_t last_linktype; /* FIXME: kludge */
-	const char *set_label; /* label assigned to next node */
+	SSG_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
 	SSG_ParseEvData *group_from; /* where to begin for group_events() */
 	SSG_ParseEvData *composite; /* grouping of events for a voice and/or operator */
@@ -676,21 +682,21 @@ enum {
 static void destroy_operator(SSG_ParseOpData *restrict op) {
 	size_t i;
 	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->fmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->fmods);
 	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->fmods);
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->pmods);
+	SSG_PtrArr_clear(&op->fmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->pmods);
 	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->pmods);
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&op->amods);
+	SSG_PtrArr_clear(&op->pmods);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->amods);
 	for (i = op->amods.old_count; i < op->amods.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&op->amods);
+	SSG_PtrArr_clear(&op->amods);
 	free(op);
 }
 
@@ -700,11 +706,11 @@ static void destroy_operator(SSG_ParseOpData *restrict op) {
 static void destroy_event_node(SSG_ParseEvData *restrict e) {
 	size_t i;
 	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrList_ITEMS(&e->operators);
+	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&e->operators);
 	for (i = e->operators.old_count; i < e->operators.count; ++i) {
 		destroy_operator(ops[i]);
 	}
-	SSG_PtrList_clear(&e->operators);
+	SSG_PtrArr_clear(&e->operators);
 	free(e);
 }
 
@@ -860,9 +866,9 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		}
 		op->wave = pop->wave;
 		op->phase = pop->phase;
-		SSG_PtrList_soft_copy(&op->fmods, &pop->fmods);
-		SSG_PtrList_soft_copy(&op->pmods, &pop->pmods);
-		SSG_PtrList_soft_copy(&op->amods, &pop->amods);
+		SSG_PtrArr_soft_copy(&op->fmods, &pop->fmods);
+		SSG_PtrArr_soft_copy(&op->pmods, &pop->pmods);
+		SSG_PtrArr_soft_copy(&op->amods, &pop->amods);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
 			SSG_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -897,13 +903,13 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 */
 	if (linktype == NL_REFER ||
 			linktype == NL_GRAPH) {
-		SSG_PtrList_add(&e->operators, op);
+		SSG_PtrArr_add(&e->operators, op);
 		if (linktype == NL_GRAPH) {
 			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
 			op->op_flags |= SSG_SDOP_NEW_CARRIER;
 		}
 	} else {
-		SSG_PtrList *list = NULL;
+		SSG_PtrArr *list = NULL;
 		switch (linktype) {
 		case NL_FMODS:
 			list = &pl->parent_op->fmods;
@@ -916,7 +922,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 			break;
 		}
 		pl->parent_op->op_params |= SSG_POPP_ADJCS;
-		SSG_PtrList_add(list, op);
+		SSG_PtrArr_add(list, op);
 	}
 	/*
 	 * Assign label. If no new label but previous node
@@ -924,12 +930,12 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	 * point to new node, but keep pointer in previous node.
 	 */
 	if (pl->set_label != NULL) {
-		SSG_SymTab_set(o->st, pl->set_label, strlen(pl->set_label), op);
 		op->label = pl->set_label;
+		op->label->data = op;
 		pl->set_label = NULL;
 	} else if (!is_composite && pop != NULL && pop->label != NULL) {
-		SSG_SymTab_set(o->st, pop->label, strlen(pop->label), op);
 		op->label = pop->label;
+		op->label->data = op;
 	}
 	pl->pl_flags |= SDPL_ACTIVE_OP;
 }
@@ -1086,7 +1092,7 @@ static bool parse_ev_amp(ParseLevel *restrict pl) {
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
 		if (op->amods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->amods);
+			SSG_PtrArr_clear(&op->amods);
 		}
 		parse_level(o, pl, NL_AMODS, SCOPE_NEST);
 	}
@@ -1116,7 +1122,7 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
 		if (op->fmods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->fmods);
+			SSG_PtrArr_clear(&op->fmods);
 		}
 		parse_level(o, pl, NL_FMODS, SCOPE_NEST);
 	}
@@ -1137,7 +1143,7 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 	if (SSG_File_TRYC(f, '+') && SSG_File_TRYC(f, '[')) {
 		if (op->pmods.count > 0) {
 			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrList_clear(&op->pmods);
+			SSG_PtrArr_clear(&op->pmods);
 		}
 		parse_level(o, pl, NL_PMODS, SCOPE_NEST);
 	}
@@ -1228,9 +1234,8 @@ enum {
 static void parse_level(SSG_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
 		uint8_t linktype, uint8_t newscope) {
-	LabelBuf label;
 	ParseLevel pl;
-	size_t label_len;
+	SSG_SymStr *label;
 	uint8_t flags = 0;
 	begin_scope(o, &pl, parent_pl, linktype, newscope);
 	++o->call_level;
@@ -1261,8 +1266,7 @@ static void parse_level(SSG_Parser *restrict o,
 "ignoring label assignment to label assignment");
 				break;
 			}
-			label_len = scan_label(sc, label, c);
-			pl.set_label = SSG_SymTab_pool_str(o->st, label, label_len);
+			pl.set_label = scan_label(sc, c);
 			break;
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
@@ -1293,10 +1297,9 @@ static void parse_level(SSG_Parser *restrict o,
 				pl.set_label = NULL;
 			}
 			pl.location = SDPL_IN_NONE;
-			label_len = scan_label(sc, label, c);
-			if (label_len > 0) {
-				SSG_ParseOpData *ref =
-					SSG_SymTab_get(o->st, label, label_len);
+			label = scan_label(sc, c);
+			if (label != NULL) {
+				SSG_ParseOpData *ref = label->data;
 				if (!ref)
 					scan_warning(sc,
 "ignoring reference to undefined label");

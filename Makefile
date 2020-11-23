@@ -12,43 +12,41 @@ SHARE=ssndgen
 OBJ=\
 	common.o \
 	arrtype.o \
-	ptrlist.o \
-	builder/file.o \
-	builder/symtab.o \
-	builder/parser.o \
-	builder/parseconv.o \
-	builder/voicegraph.o \
-	builder/scriptconv.o \
-	builder/builder.o \
+	ptrarr.o \
 	mempool.o \
 	ramp.o \
 	wave.o \
+	reader/file.o \
+	reader/symtab.o \
+	reader/parser.o \
+	reader/parseconv.o \
+	builder/voicegraph.o \
+	builder/scriptconv.o \
+	builder/builder.o \
 	interp/osc.o \
 	interp/mixer.o \
 	interp/prealloc.o \
-	interp/generator.o \
+	interp/interp.o \
 	player/audiodev.o \
 	player/wavfile.o \
 	player/player.o \
 	ssndgen.o
-TEST_OBJ=\
+TEST1_OBJ=\
 	common.o \
 	arrtype.o \
-	ptrlist.o \
-	builder/file.o \
-	builder/symtab.o \
-	builder/scanner.o \
-	builder/lexer.o \
-	builder/voicegraph.o \
-	builder/scriptconv.o \
+	ptrarr.o \
 	mempool.o \
-	test-builder.o
+	reader/file.o \
+	reader/symtab.o \
+	reader/scanner.o \
+	reader/lexer.o \
+	test-scan.o
 
 all: $(BIN)
-test: test-builder
+tests: test-scan
 clean:
 	rm -f $(OBJ) $(BIN)
-	rm -f $(TEST_OBJ) test-builder
+	rm -f $(TEST1_OBJ) test-scan
 install: $(BIN)
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	mkdir -p $(DESTDIR)$(PREFIX)/share/$(SHARE)
@@ -74,44 +72,26 @@ $(BIN): $(OBJ)
 		$(CC) $(OBJ) $(LFLAGS) -o $(BIN); \
 	fi
 
-test-builder: $(TEST_OBJ)
-	$(CC) $(TEST_OBJ) $(LFLAGS) -o test-builder
+test-scan: $(TEST1_OBJ)
+	$(CC) $(TEST1_OBJ) $(LFLAGS) -o test-scan
 
-arrtype.o: arrtype.c arrtype.h mempool.h common.h
+arrtype.o: arrtype.c arrtype.h common.h mempool.h
 	$(CC) -c $(CFLAGS) arrtype.c
 
-builder/builder.o: builder/builder.c builder/file.h common.h math.h program.h ptrlist.h ramp.h script.h ssndgen.h time.h wave.h
+builder/builder.o: builder/builder.c common.h math.h program.h ptrarr.h ramp.h reader/file.h script.h ssndgen.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/builder.c -o builder/builder.o
 
-builder/file.o: builder/file.c builder/file.h common.h
-	$(CC) -c $(CFLAGS) builder/file.c -o builder/file.o
-
-builder/lexer.o: builder/lexer.c builder/lexer.h builder/file.h builder/symtab.h math.h common.h
-	$(CC) -c $(CFLAGS) builder/lexer.c -o builder/lexer.o
-
-builder/parseconv.o: builder/parseconv.c builder/parser.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h common.h
-	$(CC) -c $(CFLAGS) builder/parseconv.c -o builder/parseconv.o
-
-builder/parser.o: builder/parser.c builder/parser.h builder/file.h builder/symtab.h script.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) builder/parser.c -o builder/parser.o
-
-builder/scanner.o: builder/scanner.c builder/scanner.h builder/file.h builder/symtab.h math.h common.h
-	$(CC) -c $(CFLAGS) builder/scanner.c -o builder/scanner.o
-
-builder/scriptconv.o: builder/scriptconv.c builder/scriptconv.h program.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h mempool.h common.h
+builder/scriptconv.o: arrtype.h builder/scriptconv.c builder/scriptconv.h common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/scriptconv.c -o builder/scriptconv.o
 
-builder/symtab.o: builder/symtab.c builder/symtab.h mempool.h common.h
-	$(CC) -c $(CFLAGS) builder/symtab.c -o builder/symtab.o
-
-builder/voicegraph.o: builder/voicegraph.c builder/scriptconv.h program.h time.h ramp.h wave.h math.h script.h ptrlist.h arrtype.h mempool.h common.h
+builder/voicegraph.o: arrtype.h builder/scriptconv.h builder/voicegraph.c common.h math.h mempool.h program.h ptrarr.h ramp.h script.h time.h wave.h
 	$(CC) -c $(CFLAGS) builder/voicegraph.c -o builder/voicegraph.o
 
 common.o: common.c common.h
 	$(CC) -c $(CFLAGS) common.c
 
-interp/generator.o: common.h interp/generator.c interp/generator.h interp/mixer.h interp/osc.h interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
-	$(CC) -c $(CFLAGS_FAST) interp/generator.c -o interp/generator.o
+interp/interp.o: common.h interp/interp.c interp/interp.h interp/mixer.h interp/osc.h interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
+	$(CC) -c $(CFLAGS_FAST) interp/interp.c -o interp/interp.o
 
 interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
 	$(CC) -c $(CFLAGS_FAST) interp/mixer.c -o interp/mixer.o
@@ -119,7 +99,7 @@ interp/mixer.o: common.h interp/mixer.c interp/mixer.h math.h ramp.h
 interp/osc.o: common.h interp/osc.c interp/osc.h math.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/osc.c -o interp/osc.o
 
-interp/prealloc.o: common.h interp/generator.h interp/osc.h interp/prealloc.c interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
+interp/prealloc.o: common.h interp/interp.h interp/osc.h interp/prealloc.c interp/prealloc.h math.h mempool.h program.h ramp.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) interp/prealloc.c -o interp/prealloc.o
 
 mempool.o: common.h mempool.c mempool.h
@@ -128,23 +108,41 @@ mempool.o: common.h mempool.c mempool.h
 player/audiodev.o: common.h player/audiodev.c player/audiodev.h player/audiodev/*.c
 	$(CC) -c $(CFLAGS) player/audiodev.c -o player/audiodev.o
 
-player/player.o: common.h interp/generator.h math.h player/audiodev.h player/player.c player/wavfile.h program.h ptrlist.h ramp.h ssndgen.h time.h wave.h
+player/player.o: common.h interp/interp.h math.h player/audiodev.h player/player.c player/wavfile.h program.h ptrarr.h ramp.h ssndgen.h time.h wave.h
 	$(CC) -c $(CFLAGS_FAST) player/player.c -o player/player.o
 
 player/wavfile.o: common.h player/wavfile.c player/wavfile.h
 	$(CC) -c $(CFLAGS) player/wavfile.c -o player/wavfile.o
 
-ptrlist.o: common.h mempool.h ptrlist.c ptrlist.h
-	$(CC) -c $(CFLAGS) ptrlist.c
+ptrarr.o: common.h mempool.h ptrarr.c ptrarr.h
+	$(CC) -c $(CFLAGS) ptrarr.c
 
-ramp.o: ramp.c ramp.h time.h math.h common.h
+ramp.o: common.h math.h ramp.c ramp.h time.h
 	$(CC) -c $(CFLAGS_FAST) ramp.c
 
-ssndgen.o: ssndgen.c ssndgen.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
+reader/file.o: common.h reader/file.c reader/file.h
+	$(CC) -c $(CFLAGS) reader/file.c -o reader/file.o
+
+reader/lexer.o: common.h math.h mempool.h reader/file.h reader/lexer.c reader/lexer.h reader/symtab.h
+	$(CC) -c $(CFLAGS) reader/lexer.c -o reader/lexer.o
+
+reader/parseconv.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/parseconv.c reader/parser.h reader/symtab.h script.h time.h wave.h
+	$(CC) -c $(CFLAGS) reader/parseconv.c -o reader/parseconv.o
+
+reader/parser.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/file.h reader/parser.c reader/parser.h reader/symtab.h script.h time.h wave.h
+	$(CC) -c $(CFLAGS) reader/parser.c -o reader/parser.o
+
+reader/scanner.o: common.h math.h mempool.h reader/file.h reader/scanner.c reader/scanner.h reader/symtab.h
+	$(CC) -c $(CFLAGS) reader/scanner.c -o reader/scanner.o
+
+reader/symtab.o: common.h mempool.h reader/symtab.c reader/symtab.h
+	$(CC) -c $(CFLAGS) reader/symtab.c -o reader/symtab.o
+
+ssndgen.o: common.h math.h program.h ptrarr.h ramp.h ssndgen.c ssndgen.h time.h wave.h
 	$(CC) -c $(CFLAGS) ssndgen.c
 
-test-builder.o: test-builder.c ssndgen.h builder/lexer.h builder/scanner.h builder/file.h builder/symtab.h ptrlist.h program.h time.h ramp.h wave.h math.h common.h
-	$(CC) -c $(CFLAGS) test-builder.c
+test-scan.o: common.h math.h mempool.h program.h ptrarr.h ramp.h reader/lexer.h reader/scanner.h reader/file.h reader/symtab.h ssndgen.h test-scan.c time.h wave.h
+	$(CC) -c $(CFLAGS) test-scan.c
 
-wave.o: wave.c wave.h math.h common.h
+wave.o: common.h math.h wave.c wave.h
 	$(CC) -c $(CFLAGS_FAST) wave.c
