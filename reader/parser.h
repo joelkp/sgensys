@@ -16,9 +16,17 @@
 #include "symtab.h"
 
 /**
+ * Points to bounding members of a linearly ordered list of nodes.
+ */
+typedef struct SSG_NodeRange {
+	void *first, *last;
+} SSG_NodeRange;
+
+/**
  * Node type for operator data.
  */
 typedef struct SSG_ParseOpData {
+	struct SSG_ParseOpData *range_next;
 	struct SSG_ParseEvData *event;
 	struct SSG_ParseOpData *next_bound;
 	SSG_SymStr *label;
@@ -28,13 +36,14 @@ typedef struct SSG_ParseOpData {
 	SSG_Time time;
 	uint32_t silence_ms;
 	uint8_t wave;
+	uint8_t use_type;
 	SSG_Ramp freq, freq2;
 	SSG_Ramp amp, amp2;
 	float phase;
 	struct SSG_ParseOpData *op_prev; /* preceding for same op(s) */
 	void *op_conv; /* for parseconv */
 	/* node adjacents in operator linkage graph */
-	SSG_PtrArr fmods, pmods, amods;
+	SSG_NodeRange *fmods, *pmods, *amods;
 } SSG_ParseOpData;
 
 /**
@@ -47,7 +56,7 @@ typedef struct SSG_ParseEvData {
 	struct SSG_ParseEvData *composite;
 	uint32_t wait_ms;
 	uint32_t ev_flags;
-	SSG_PtrArr operators; /* operator nodes directly linked from event */
+	SSG_NodeRange operators; /* operator nodes directly linked from event */
 	void *ev_conv; /* for parseconv */
 	/* voice parameters */
 	uint32_t vo_params;

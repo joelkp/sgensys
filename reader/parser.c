@@ -55,6 +55,31 @@ typedef struct ScanLookup {
 	const char *const*ramp_names;
 } ScanLookup;
 
+/*
+ * Default script options, used until changed in a script.
+ */
+static const SSG_ScriptOptions def_sopt = {
+	.changed = 0,
+	.ampmult = 1.f,
+	.A4_freq = 444.f,
+	.def_time_ms = 1000,
+	.def_freq = 444.f,
+	.def_relfreq = 1.f,
+};
+
+static bool init_ScanLookup(ScanLookup *restrict o, SSG_SymTab *restrict st) {
+	o->sopt = def_sopt;
+	o->wave_names = SSG_SymTab_pool_stra(st,
+			SSG_Wave_names, SSG_WAVE_TYPES);
+	if (!o->wave_names)
+		return false;
+	o->ramp_names = SSG_SymTab_pool_stra(st,
+			SSG_Ramp_names, SSG_RAMP_TYPES);
+	if (!o->ramp_names)
+		return false;
+	return true;
+}
+
 typedef struct PScanner {
 	SSG_File *f;
 	uint32_t line;
@@ -190,6 +215,13 @@ typedef struct NumParser {
 	NumSym_f numsym_f;
 	bool has_infnum;
 } NumParser;
+enum {
+	NUMEXP_SUB = 0,
+	NUMEXP_ADT,
+	NUMEXP_MLT,
+	NUMEXP_POW,
+	NUMEXP_NUM,
+};
 static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 	PScanner *sc = o->sc;
 	SSG_File *f = sc->f;
@@ -204,27 +236,21 @@ static double scan_num_r(NumParser *restrict o, uint8_t pri, uint32_t level) {
 		c = SSG_File_GETC(f);
 	}
 	if (c == '(') {
-		num = scan_num_r(o, 255, level+1);
-		if (minus) num = -num;
-		if (level == 0) return num;
-		goto EVAL;
-	}
-	if (o->numsym_f && IS_ALPHA(c)) {
+		num = scan_num_r(o, NUMEXP_SUB, level+1);
+	} else if (o->numsym_f && IS_ALPHA(c)) {
 		SSG_File_UNGETC(f);
 		num = o->numsym_f(sc);
-		if (isnan(num))
-			return NAN;
-		if (minus) num = -num;
 	} else {
 		size_t read_len;
 		SSG_File_UNGETC(f);
 		SSG_File_getd(f, &num, false, &read_len);
 		if (read_len == 0)
 			return NAN;
-		if (minus) num = -num;
 	}
-EVAL:
-	if (pri == 0)
+	if (isnan(num))
+		return NAN;
+	if (minus) num = -num;
+	if (level == 0 || pri == NUMEXP_NUM)
 		return num; /* defer all */
 	for (;;) {
 		if (isinf(num)) o->has_infnum = true;
@@ -232,30 +258,34 @@ EVAL:
 		c = SSG_File_GETC(f);
 		switch (c) {
 		case '(':
-			num *= scan_num_r(o, 255, level+1);
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num *= scan_num_r(o, NUMEXP_SUB, level+1);
 			break;
 		case ')':
-			if (pri < 255) goto DEFER;
+			if (pri != NUMEXP_SUB) goto DEFER;
 			return num;
 		case '^':
-			num = exp(log(num) * scan_num_r(o, 0, level));
+			if (pri >= NUMEXP_POW) goto DEFER;
+			num = exp(log(num) * scan_num_r(o, NUMEXP_POW, level));
 			break;
 		case '*':
-			num *= scan_num_r(o, 1, level);
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num *= scan_num_r(o, NUMEXP_MLT, level);
 			break;
 		case '/':
-			num /= scan_num_r(o, 1, level);
+			if (pri >= NUMEXP_MLT) goto DEFER;
+			num /= scan_num_r(o, NUMEXP_MLT, level);
 			break;
 		case '+':
-			if (pri <= 2) goto DEFER;
-			num += scan_num_r(o, 2, level);
+			if (pri >= NUMEXP_ADT) goto DEFER;
+			num += scan_num_r(o, NUMEXP_ADT, level);
 			break;
 		case '-':
-			if (pri <= 2) goto DEFER;
-			num -= scan_num_r(o, 2, level);
+			if (pri >= NUMEXP_ADT) goto DEFER;
+			num -= scan_num_r(o, NUMEXP_ADT, level);
 			break;
 		default:
-			if (pri == 255) {
+			if (pri == NUMEXP_SUB) {
 				scan_warning(sc,
 "numerical expression has '(' without closing ')'");
 			}
@@ -270,7 +300,7 @@ DEFER:
 static bool SSG__noinline scan_num(PScanner *restrict o,
 		NumSym_f scan_numsym, float *restrict var) {
 	NumParser np = {o, scan_numsym, false};
-	float num = scan_num_r(&np, 0, 0);
+	float num = scan_num_r(&np, NUMEXP_NUM, 0);
 	if (isnan(num))
 		return false;
 	if (isinf(num)) np.has_infnum = true;
@@ -467,6 +497,9 @@ static bool scan_ramp_state(PScanner *restrict o,
 
 static bool scan_ramp(PScanner *restrict o, NumSym_f scan_numsym,
 		SSG_Ramp *restrict ramp, bool mult) {
+	if (!SSG_File_TRYC(o->f, '{')) {
+		return scan_ramp_state(o, scan_numsym, ramp, mult);
+	}
 	bool goal = false;
 	bool time_set = (ramp->flags & SSG_RAMPP_TIME) != 0;
 	float vt;
@@ -546,25 +579,20 @@ typedef struct SSG_Parser {
 	PScanner sc;
 	ScanLookup sl;
 	SSG_SymTab *st;
-	SSG_MemPool *mem;
+	SSG_MemPool *mp;
 	uint32_t call_level;
 	uint32_t scope_id;
 	/* node state */
-	SSG_ParseEvData *events;
-	SSG_ParseEvData *last_event;
+	SSG_ParseEvData *ev, *first_ev;
 } SSG_Parser;
 
 /*
- * Default script options, used until changed in a script.
+ * Finalize parser instance.
  */
-static const SSG_ScriptOptions def_sopt = {
-	.changed = 0,
-	.ampmult = 1.f,
-	.A4_freq = 444.f,
-	.def_time_ms = 1000,
-	.def_freq = 444.f,
-	.def_relfreq = 1.f,
-};
+static void fini_parser(SSG_Parser *restrict o) {
+	SSG_destroy_SymTab(o->st);
+	SSG_destroy_MemPool(o->mp);
+}
 
 /*
  * Initialize parser instance.
@@ -572,23 +600,19 @@ static const SSG_ScriptOptions def_sopt = {
  * The same symbol table and script-set data will be used
  * until the instance is finalized.
  */
-static void init_parser(SSG_Parser *restrict o) {
+static bool init_parser(SSG_Parser *restrict o) {
+	SSG_MemPool *mp = SSG_create_MemPool(0);
+	SSG_SymTab *st = SSG_create_SymTab(mp);
 	*o = (SSG_Parser){0};
-	o->mem = SSG_create_MemPool(0);
-	o->st = SSG_create_SymTab(o->mem);
-	o->sl.sopt = def_sopt;
-	o->sl.wave_names = SSG_SymTab_pool_stra(o->st,
-			SSG_Wave_names, SSG_WAVE_TYPES);
-	o->sl.ramp_names = SSG_SymTab_pool_stra(o->st,
-			SSG_Ramp_names, SSG_RAMP_TYPES);
-}
+	o->st = st;
+	o->mp = mp;
+	if (!st || !mp) goto ERROR;
+	if (!init_ScanLookup(&o->sl, st)) goto ERROR;
+	return true;
 
-/*
- * Finalize parser instance.
- */
-static void fini_parser(SSG_Parser *restrict o) {
-	SSG_destroy_SymTab(o->st);
-	SSG_destroy_MemPool(o->mem);
+ERROR:
+	fini_parser(o);
+	return false;
 }
 
 /*
@@ -633,8 +657,7 @@ typedef struct ParseLevel {
 	SSG_ParseEvData *event, *last_event;
 	SSG_ParseOpData *operator, *first_operator, *last_operator;
 	SSG_ParseOpData *parent_op, *op_prev;
-	uint8_t linktype;
-	uint8_t last_linktype; /* FIXME: kludge */
+	uint8_t use_type; /* FIXME: kludge */
 	SSG_SymStr *set_label; /* label assigned to next node */
 	/* timing/delay */
 	SSG_ParseEvData *group_from; /* where to begin for group_events() */
@@ -667,36 +690,35 @@ static bool parse_waittime(ParseLevel *restrict pl) {
  * Node- and scope-handling functions
  */
 
-enum {
-	/* node list/node link types */
-	NL_REFER = 0,
-	NL_GRAPH,
-	NL_FMODS,
-	NL_PMODS,
-	NL_AMODS,
-};
-
 /*
  * Destroy the given operator data node.
  */
 static void destroy_operator(SSG_ParseOpData *restrict op) {
-	size_t i;
-	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->fmods);
-	for (i = op->fmods.old_count; i < op->fmods.count; ++i) {
-		destroy_operator(ops[i]);
+	SSG_ParseOpData *sub_op, *sub_op_next;
+	if (op->fmods != NULL) {
+		sub_op = op->fmods->first;
+		for (; sub_op != NULL; sub_op = sub_op_next) {
+			sub_op_next = sub_op->range_next;
+			destroy_operator(sub_op);
+		}
+		free(op->fmods);
 	}
-	SSG_PtrArr_clear(&op->fmods);
-	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->pmods);
-	for (i = op->pmods.old_count; i < op->pmods.count; ++i) {
-		destroy_operator(ops[i]);
+	if (op->pmods != NULL) {
+		sub_op = op->pmods->first;
+		for (; sub_op != NULL; sub_op = sub_op_next) {
+			sub_op_next = sub_op->range_next;
+			destroy_operator(sub_op);
+		}
+		free(op->pmods);
 	}
-	SSG_PtrArr_clear(&op->pmods);
-	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&op->amods);
-	for (i = op->amods.old_count; i < op->amods.count; ++i) {
-		destroy_operator(ops[i]);
+	if (op->amods != NULL) {
+		sub_op = op->amods->first;
+		for (; sub_op != NULL; sub_op = sub_op_next) {
+			sub_op_next = sub_op->range_next;
+			destroy_operator(sub_op);
+		}
+		free(op->amods);
 	}
-	SSG_PtrArr_clear(&op->amods);
 	free(op);
 }
 
@@ -704,13 +726,12 @@ static void destroy_operator(SSG_ParseOpData *restrict op) {
  * Destroy the given event data node and all associated operator data nodes.
  */
 static void destroy_event_node(SSG_ParseEvData *restrict e) {
-	size_t i;
-	SSG_ParseOpData **ops;
-	ops = (SSG_ParseOpData**) SSG_PtrArr_ITEMS(&e->operators);
-	for (i = e->operators.old_count; i < e->operators.count; ++i) {
-		destroy_operator(ops[i]);
+	SSG_ParseOpData *op, *op_next;
+	op = e->operators.first;
+	for (; op != NULL; op = op_next) {
+		op_next = op->range_next;
+		destroy_operator(op);
 	}
-	SSG_PtrArr_clear(&e->operators);
 	free(e);
 }
 
@@ -720,19 +741,13 @@ static void end_operator(ParseLevel *restrict pl) {
 	pl->pl_flags &= ~SDPL_ACTIVE_OP;
 	SSG_Parser *o = pl->o;
 	SSG_ParseOpData *op = pl->operator;
-	if (SSG_Ramp_ENABLED(&op->freq))
-		op->op_params |= SSG_POPP_FREQ;
-	if (SSG_Ramp_ENABLED(&op->freq2))
-		op->op_params |= SSG_POPP_FREQ2;
 	if (SSG_Ramp_ENABLED(&op->amp)) {
-		op->op_params |= SSG_POPP_AMP;
 		if (!(op->op_flags & SSG_SDOP_NESTED)) {
 			op->amp.v0 *= o->sl.sopt.ampmult;
 			op->amp.vt *= o->sl.sopt.ampmult;
 		}
 	}
 	if (SSG_Ramp_ENABLED(&op->amp2)) {
-		op->op_params |= SSG_POPP_AMP2;
 		if (!(op->op_flags & SSG_SDOP_NESTED)) {
 			op->amp2.v0 *= o->sl.sopt.ampmult;
 			op->amp2.vt *= o->sl.sopt.ampmult;
@@ -752,13 +767,6 @@ static void end_operator(ParseLevel *restrict pl) {
 			SSG_POPP_PHASE |
 			SSG_POPP_AMP |
 			SSG_POPP_AMP2;
-	} else {
-		if (op->wave != pop->wave)
-			op->op_params |= SSG_POPP_WAVE;
-		/* SSG_TIME set when time set */
-		if (op->silence_ms != 0)
-			op->op_params |= SSG_POPP_SILENCE;
-		/* SSG_PHASE set when phase set */
 	}
 	pl->operator = NULL;
 	pl->last_operator = op;
@@ -770,14 +778,11 @@ static void end_event(ParseLevel *restrict pl) {
 	pl->pl_flags &= ~SDPL_ACTIVE_EV;
 	SSG_ParseEvData *e = pl->event;
 	end_operator(pl);
-	if (SSG_Ramp_ENABLED(&e->pan))
-		e->vo_params |= SSG_PVOP_PAN;
 	SSG_ParseEvData *pve = e->vo_prev;
 	if (!pve) {
 		/*
 		 * Reset all voice state for initial event.
 		 */
-		e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
 		e->vo_params |= SSG_PVOP_PAN;
 	}
 	pl->last_event = e;
@@ -821,17 +826,17 @@ static void begin_event(ParseLevel *restrict pl,
 	if (!pl->group_from)
 		pl->group_from = e;
 	if (!is_composite) {
-		if (!o->events)
-			o->events = e;
+		if (!o->first_ev)
+			o->first_ev = e;
 		else
-			o->last_event->next = e;
-		o->last_event = e;
+			o->ev->next = e;
+		o->ev = e;
 		pl->composite = NULL;
 	}
 	pl->pl_flags |= SDPL_ACTIVE_EV;
 }
 
-static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
+static void begin_operator(ParseLevel *restrict pl, uint8_t use_type,
 		bool is_composite) {
 	SSG_Parser *o = pl->o;
 	SSG_ParseEvData *e = pl->event;
@@ -855,6 +860,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 	SSG_Ramp_reset(&op->amp);
 	SSG_Ramp_reset(&op->amp2);
 	if (pop != NULL) {
+		use_type = pop->use_type;
 		pop->op_flags |= SSG_SDOP_LATER_USED;
 		op->op_prev = pop;
 		op->op_flags = pop->op_flags &
@@ -864,11 +870,6 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		} else {
 			op->time.flags |= SSG_TIMEP_SET;
 		}
-		op->wave = pop->wave;
-		op->phase = pop->phase;
-		SSG_PtrArr_soft_copy(&op->fmods, &pop->fmods);
-		SSG_PtrArr_soft_copy(&op->pmods, &pop->pmods);
-		SSG_PtrArr_soft_copy(&op->amods, &pop->amods);
 		if ((pl->pl_flags & SDPL_BIND_MULTIPLE) != 0) {
 			SSG_ParseOpData *mpop = pop;
 			uint32_t max_time = 0;
@@ -895,35 +896,35 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
 		op->amp.v0 = 1.0f;
 		op->amp.flags |= SSG_RAMPP_STATE;
 	}
+	op->use_type = use_type;
+	pl->use_type = use_type; /* FIXME: kludge */
 	op->event = e;
 	/*
 	 * Add new operator to parent(s), ie. either the current event node,
 	 * or an operator node (either ordinary or representing multiple
 	 * carriers) in the case of operator linking/nesting.
 	 */
-	if (linktype == NL_REFER ||
-			linktype == NL_GRAPH) {
-		SSG_PtrArr_add(&e->operators, op);
-		if (linktype == NL_GRAPH) {
-			e->ev_flags |= SSG_SDEV_NEW_OPGRAPH;
-			op->op_flags |= SSG_SDOP_NEW_CARRIER;
-		}
+	SSG_NodeRange *list = NULL;
+	if (pop != NULL || use_type == SSG_POP_CARR) {
+		list = &e->operators;
 	} else {
-		SSG_PtrArr *list = NULL;
-		switch (linktype) {
-		case NL_FMODS:
-			list = &pl->parent_op->fmods;
+		switch (use_type) {
+		case SSG_POP_FMOD:
+			list = pl->parent_op->fmods;
 			break;
-		case NL_PMODS:
-			list = &pl->parent_op->pmods;
+		case SSG_POP_PMOD:
+			list = pl->parent_op->pmods;
 			break;
-		case NL_AMODS:
-			list = &pl->parent_op->amods;
+		case SSG_POP_AMOD:
+			list = pl->parent_op->amods;
 			break;
 		}
-		pl->parent_op->op_params |= SSG_POPP_ADJCS;
-		SSG_PtrArr_add(list, op);
 	}
+	if (!list->first)
+		list->first = op;
+	else
+		((SSG_ParseOpData*) list->last)->range_next = op;
+	list->last = op;
 	/*
 	 * Assign label. If no new label but previous node
 	 * (for a non-composite) has one, update label to
@@ -948,7 +949,7 @@ static void begin_operator(ParseLevel *restrict pl, uint8_t linktype,
  */
 static void begin_node(ParseLevel *restrict pl,
 		SSG_ParseOpData *restrict previous,
-		uint8_t linktype, bool is_composite) {
+		uint8_t use_type, bool is_composite) {
 	pl->op_prev = previous;
 	if (!pl->event ||
 			pl->location != SDPL_IN_EVENT
@@ -956,13 +957,11 @@ static void begin_node(ParseLevel *restrict pl,
 			pl->next_wait_ms ||
 			is_composite)
 		begin_event(pl, is_composite);
-	begin_operator(pl, linktype, is_composite);
-	pl->last_linktype = linktype; /* FIXME: kludge */
+	begin_operator(pl, use_type, is_composite);
 }
 
 static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
-		ParseLevel *restrict parent_pl,
-		uint8_t linktype, uint8_t newscope) {
+		ParseLevel *restrict parent_pl, uint8_t newscope) {
 	*pl = (ParseLevel){0};
 	pl->o = o;
 	pl->scope = newscope;
@@ -981,7 +980,6 @@ static void begin_scope(SSG_Parser *restrict o, ParseLevel *restrict pl,
 			pl->parent_op = parent_pl->operator;
 		}
 	}
-	pl->linktype = linktype;
 }
 
 static void end_scope(ParseLevel *restrict pl) {
@@ -997,7 +995,8 @@ static void end_scope(ParseLevel *restrict pl) {
 		 */
 		if (pl->first_operator != NULL) {
 			pl->parent->pl_flags |= SDPL_BIND_MULTIPLE;
-			begin_node(pl->parent, pl->first_operator, pl->parent->last_linktype, false);
+			begin_node(pl->parent, pl->first_operator,
+					pl->parent->use_type, false);
 		}
 	} else if (!pl->parent) {
 		/*
@@ -1070,31 +1069,23 @@ static bool parse_settings(ParseLevel *restrict pl) {
 
 static void parse_level(SSG_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
-		uint8_t linktype, uint8_t newscope);
+		uint8_t use_type, uint8_t newscope);
 
 static bool parse_ev_amp(ParseLevel *restrict pl) {
 	SSG_Parser *o = pl->o;
 	PScanner *sc = &o->sc;
 	SSG_File *f = sc->f;
 	SSG_ParseOpData *op = pl->operator;
-	if (SSG_File_TRYC(f, '{')) {
-		scan_ramp(sc, NULL, &op->amp, false);
-	} else {
-		scan_ramp_state(sc, NULL, &op->amp, false);
-	}
+	if (scan_ramp(sc, NULL, &op->amp, false))
+		op->op_params |= SSG_POPP_AMP;
 	if (SSG_File_TRYC(f, ',')) {
-		if (SSG_File_TRYC(f, '{')) {
-			scan_ramp(sc, NULL, &op->amp2, false);
-		} else {
-			scan_ramp_state(sc, NULL, &op->amp2, false);
-		}
+		if (scan_ramp(sc, NULL, &op->amp2, false))
+			op->op_params |= SSG_POPP_AMP2;
 	}
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
-		if (op->amods.count > 0) {
-			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrArr_clear(&op->amods);
-		}
-		parse_level(o, pl, NL_AMODS, SCOPE_NEST);
+		op->amods = calloc(1, sizeof(SSG_NodeRange));
+		op->op_params |= SSG_POPP_ADJCS;
+		parse_level(o, pl, SSG_POP_AMOD, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1107,24 +1098,16 @@ static bool parse_ev_freq(ParseLevel *restrict pl, bool rel_freq) {
 	if (rel_freq && !(op->op_flags & SSG_SDOP_NESTED))
 		return true; // reject
 	NumSym_f numsym_f = rel_freq ? NULL : scan_note;
-	if (SSG_File_TRYC(f, '{')) {
-		scan_ramp(sc, numsym_f, &op->freq, rel_freq);
-	} else {
-		scan_ramp_state(sc, numsym_f, &op->freq, rel_freq);
-	}
+	if (scan_ramp(sc, numsym_f, &op->freq, rel_freq))
+		op->op_params |= SSG_POPP_FREQ;
 	if (SSG_File_TRYC(f, ',')) {
-		if (SSG_File_TRYC(f, '{')) {
-			scan_ramp(sc, numsym_f, &op->freq2, rel_freq);
-		} else {
-			scan_ramp_state(sc, numsym_f, &op->freq2, rel_freq);
-		}
+		if (scan_ramp(sc, numsym_f, &op->freq2, rel_freq))
+			op->op_params |= SSG_POPP_FREQ2;
 	}
 	if (SSG_File_TRYC(f, '~') && SSG_File_TRYC(f, '[')) {
-		if (op->fmods.count > 0) {
-			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrArr_clear(&op->fmods);
-		}
-		parse_level(o, pl, NL_FMODS, SCOPE_NEST);
+		op->fmods = calloc(1, sizeof(SSG_NodeRange));
+		op->op_params |= SSG_POPP_ADJCS;
+		parse_level(o, pl, SSG_POP_FMOD, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1141,11 +1124,9 @@ static bool parse_ev_phase(ParseLevel *restrict pl) {
 		op->op_params |= SSG_POPP_PHASE;
 	}
 	if (SSG_File_TRYC(f, '+') && SSG_File_TRYC(f, '[')) {
-		if (op->pmods.count > 0) {
-			op->op_params |= SSG_POPP_ADJCS;
-			SSG_PtrArr_clear(&op->pmods);
-		}
-		parse_level(o, pl, NL_PMODS, SCOPE_NEST);
+		op->pmods = calloc(1, sizeof(SSG_NodeRange));
+		op->op_params |= SSG_POPP_ADJCS;
+		parse_level(o, pl, SSG_POP_PMOD, SCOPE_NEST);
 	}
 	return false;
 }
@@ -1163,17 +1144,14 @@ static bool parse_step(ParseLevel *restrict pl) {
 		case 'P':
 			if ((pl->pl_flags & SDPL_NESTED_SCOPE) != 0)
 				goto UNKNOWN;
-			if (SSG_File_TRYC(f, '{')) {
-				scan_ramp(sc, NULL, &e->pan, false);
-			} else {
-				scan_ramp_state(sc, NULL, &e->pan, false);
-			}
+			if (scan_ramp(sc, NULL, &e->pan, false))
+				e->vo_params |= SSG_PVOP_PAN;
 			break;
 		case '\\':
-			if (parse_waittime(pl)) {
+			if (parse_waittime(pl) && pl->event != NULL) {
 				// FIXME: Buggy update node handling
 				// for carriers etc. if enabled.
-				//begin_node(pl, pl->operator, NL_REFER, false);
+				//begin_node(pl, pl->operator, 0, false);
 			}
 			break;
 		case 'a':
@@ -1190,6 +1168,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 			break;
 		case 's':
 			scan_time_val(sc, &op->silence_ms);
+			op->op_params |= SSG_POPP_SILENCE;
 			break;
 		case 't':
 			if (SSG_File_TRYC(f, '*')) {
@@ -1216,6 +1195,7 @@ static bool parse_step(ParseLevel *restrict pl) {
 			if (!scan_wavetype(sc, &wave))
 				break;
 			op->wave = wave;
+			op->op_params |= SSG_POPP_WAVE;
 			break; }
 		default:
 		UNKNOWN:
@@ -1227,17 +1207,17 @@ static bool parse_step(ParseLevel *restrict pl) {
 }
 
 enum {
-	HANDLE_DEFER = 1<<1,
-	DEFERRED_STEP = 1<<2,
-	DEFERRED_SETTINGS = 1<<4
+	HANDLE_DEFER = 1<<0,
+	DEFERRED_STEP = 1<<1,
+	DEFERRED_SETTINGS = 1<<2,
 };
 static void parse_level(SSG_Parser *restrict o,
 		ParseLevel *restrict parent_pl,
-		uint8_t linktype, uint8_t newscope) {
+		uint8_t use_type, uint8_t newscope) {
 	ParseLevel pl;
 	SSG_SymStr *label;
 	uint8_t flags = 0;
-	begin_scope(o, &pl, parent_pl, linktype, newscope);
+	begin_scope(o, &pl, parent_pl, newscope);
 	++o->call_level;
 	PScanner *sc = &o->sc;
 	SSG_File *f = sc->f;
@@ -1271,7 +1251,7 @@ static void parse_level(SSG_Parser *restrict o,
 		case ';':
 			if (pl.location == SDPL_IN_DEFAULTS || !pl.event)
 				goto INVALID;
-			begin_node(&pl, pl.operator, NL_REFER, true);
+			begin_node(&pl, pl.operator, 0, true);
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
 				0;
@@ -1279,7 +1259,7 @@ static void parse_level(SSG_Parser *restrict o,
 		case '@':
 			if (SSG_File_TRYC(f, '[')) {
 				end_operator(&pl);
-				parse_level(o, &pl, pl.linktype, SCOPE_BIND);
+				parse_level(o, &pl, use_type, SCOPE_BIND);
 				/*
 				 * Multiple-operator node now open.
 				 */
@@ -1304,7 +1284,7 @@ static void parse_level(SSG_Parser *restrict o,
 					scan_warning(sc,
 "ignoring reference to undefined label");
 				else {
-					begin_node(&pl, ref, NL_REFER, false);
+					begin_node(&pl, ref, 0, false);
 					flags = parse_step(&pl) ?
 						(HANDLE_DEFER | DEFERRED_STEP) :
 						0;
@@ -1315,7 +1295,7 @@ static void parse_level(SSG_Parser *restrict o,
 			size_t wave;
 			if (!scan_wavetype(sc, &wave))
 				break;
-			begin_node(&pl, 0, pl.linktype, false);
+			begin_node(&pl, NULL, use_type, false);
 			pl.operator->wave = wave;
 			flags = parse_step(&pl) ?
 				(HANDLE_DEFER | DEFERRED_STEP) :
@@ -1369,6 +1349,7 @@ static void parse_level(SSG_Parser *restrict o,
 				pl.group_from = NULL;
 			}
 			end_event(&pl);
+			flags &= ~DEFERRED_STEP;
 			pl.location = SDPL_IN_NONE;
 			break;
 		case '}':
@@ -1410,7 +1391,7 @@ RETURN:
  */
 static bool parse_file(SSG_Parser *restrict o, SSG_File *restrict f) {
 	init_scanner(&o->sc, f, o->st, &o->sl);
-	parse_level(o, 0, NL_GRAPH, SCOPE_TOP);
+	parse_level(o, 0, SSG_POP_CARR, SCOPE_TOP);
 	fini_scanner(&o->sc);
 	return true;
 }
@@ -1432,7 +1413,7 @@ SSG_Parse *SSG_create_Parse(SSG_File *restrict f) {
 	}
 
 	o = calloc(1, sizeof(SSG_Parse));
-	o->events = pr.events;
+	o->events = pr.first_ev;
 	o->name = name;
 	o->sopt = pr.sl.sopt;
 
