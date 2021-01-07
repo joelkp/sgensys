@@ -1,10 +1,9 @@
 /* saugns: Common definitions.
- * Copyright (c) 2011-2012, 2019-2020 Joel K. Pettersson
+ * Copyright (c) 2011-2012, 2019-2021 Joel K. Pettersson
  * <joelkpettersson@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
+ * purpose with or without fee is hereby granted.
  *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
@@ -62,6 +61,17 @@ void SAU_error(const char *restrict label, const char *restrict fmt, ...)
 	sauPrintflike(2, 3);
 
 void *SAU_memdup(const void *restrict src, size_t size) sauMalloclike;
+
+/** SAU_getopt() data. Initialize to zero, except \a err for error messages. */
+struct SAU_opt {
+	int ind; /* set to zero to start over next SAU_getopt() call */
+	int err;
+	int pos;
+	int opt;
+	const char *arg;
+};
+int SAU_getopt(int argc, char *restrict const argv[],
+		const char *restrict optstring, struct SAU_opt *restrict opt);
 
 /*
  * Debugging options.

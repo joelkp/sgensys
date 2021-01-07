@@ -15,6 +15,7 @@
 #include "help.h"
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 #define NAME SAU_CLINAME_STR
 
 /*
@@ -103,26 +104,17 @@ static bool parse_args(int argc, char **restrict argv,
 		SAU_PtrArr *restrict script_args,
 		const char **restrict wav_path,
 		uint32_t *restrict srate) {
-	int i;
+	struct SAU_opt opt = (struct SAU_opt){0};
+	int c;
+	int32_t i;
+	bool dashdash = false;
 	bool h_arg = false;
 	const char *h_type = NULL;
 	*srate = SAU_DEFAULT_SRATE;
-	for (;;) {
-		const char *arg;
-		--argc;
-		++argv;
-		if (argc < 1) {
-			if (!script_args->count) goto USAGE;
-			break;
-		}
-		arg = *argv;
-		if (*arg != '-') {
-			SAU_PtrArr_add(script_args, (void*) arg);
-			continue;
-		}
-NEXT_C:
-		if (!*++arg) continue;
-		switch (*arg) {
+	opt.err = 1;
+REPARSE:
+	while ((c = SAU_getopt(argc, argv, "amr:o:ecphv", &opt)) != -1) {
+		switch (c) {
 		case 'a':
 			if ((*flags & (SAU_ARG_AUDIO_DISABLE |
 					SAU_ARG_MODE_CHECK)) != 0)
@@ -140,13 +132,7 @@ NEXT_C:
 			break;
 		case 'h':
 			h_arg = true;
-			if (arg[1] != '\0') goto USAGE;
-			if (*flags != 0) goto USAGE;
-			--argc;
-			++argv;
-			if (argc < 1) goto USAGE;
-			arg = *argv;
-			h_type = arg;
+			h_type = opt.arg; /* optional argument for -h */
 			goto USAGE;
 		case 'm':
 			if ((*flags & (SAU_ARG_AUDIO_ENABLE |
@@ -156,44 +142,45 @@ NEXT_C:
 				SAU_ARG_AUDIO_DISABLE;
 			break;
 		case 'o':
-			if (arg[1] != '\0') goto USAGE;
 			if ((*flags & SAU_ARG_MODE_CHECK) != 0)
 				goto USAGE;
 			*flags |= SAU_ARG_MODE_FULL;
-			--argc;
-			++argv;
-			if (argc < 1) goto USAGE;
-			arg = *argv;
-			*wav_path = arg;
+			*wav_path = opt.arg;
 			continue;
 		case 'p':
 			*flags |= SAU_ARG_PRINT_INFO;
 			break;
 		case 'r':
-			if (arg[1] != '\0') goto USAGE;
 			if ((*flags & SAU_ARG_MODE_CHECK) != 0)
 				goto USAGE;
 			*flags |= SAU_ARG_MODE_FULL;
-			--argc;
-			++argv;
-			if (argc < 1) goto USAGE;
-			arg = *argv;
-			i = get_piarg(arg);
+			i = get_piarg(opt.arg);
 			if (i < 0) goto USAGE;
 			*srate = i;
 			continue;
 		case 'v':
 			print_version();
-			goto CLEAR;
+			goto ABORT;
 		default:
-			goto USAGE;
+			goto ABORT;
 		}
-		goto NEXT_C;
 	}
-	return (script_args->count != 0);
+	if (opt.ind > 1 && !strcmp(argv[opt.ind - 1], "--")) dashdash = true;
+	for (;;) {
+		if (opt.ind >= argc || !argv[opt.ind]) {
+			if (!script_args->count) goto USAGE;
+			break;
+		}
+		const char *arg = argv[opt.ind];
+		if (!dashdash && c != -1 && arg[0] == '-') goto REPARSE;
+		SAU_PtrArr_add(script_args, (void*) arg);
+		++opt.ind;
+		c = 0; /* only goto REPARSE after advancing, to prevent hang */
+	}
+	return true;
 USAGE:
 	print_usage(h_arg, h_type);
-CLEAR:
+ABORT:
 	SAU_PtrArr_clear(script_args);
 	return false;
 }
