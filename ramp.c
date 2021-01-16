@@ -251,8 +251,8 @@ bool SAU_Ramp_run(SAU_Ramp *restrict o, uint32_t *restrict pos,
 	if (*pos == time)
 	REACHED: {
 		/*
-		 * Goal reached; turn into new initial value.
-		 * Fill any remaining buffer values using it.
+		 * Goal reached; turn into new state value,
+		 * filling remaining buffer values with it.
 		 */
 		o->v0 = o->vt;
 		o->flags &= ~(SAU_RAMPP_GOAL | SAU_RAMPP_GOAL_RATIO);
@@ -290,7 +290,7 @@ bool SAU_Ramp_skip(SAU_Ramp *restrict o, uint32_t *restrict pos,
 	if (*pos == time)
 	REACHED: {
 		/*
-		 * Goal reached; turn into new initial value.
+		 * Goal reached; turn into new state value.
 		 */
 		o->v0 = o->vt;
 		if ((o->flags & SAU_RAMPP_GOAL_RATIO) != 0) {
